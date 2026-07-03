@@ -237,6 +237,10 @@ func TestGetRange(t *testing.T) {
 	if r := mustDo(t, cli, "GETRANGE", "nope", "0", "10"); r != "" {
 		t.Fatalf("GETRANGE missing = %v, want empty", r)
 	}
+	// A negative end that runs past the start clamps to the first byte, like Redis.
+	if r := mustDo(t, cli, "GETRANGE", "s", "0", "-12"); r != "H" {
+		t.Fatalf("GETRANGE 0 -12 = %v, want H", r)
+	}
 }
 
 func TestSetRange(t *testing.T) {
