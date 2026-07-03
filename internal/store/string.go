@@ -156,6 +156,9 @@ func (s *Store) GetRange(key string, start, end int64) (string, error) {
 	if start < 0 {
 		start = 0
 	}
+	if end < 0 {
+		end = 0
+	}
 	if end >= n {
 		end = n - 1
 	}
