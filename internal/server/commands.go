@@ -44,6 +44,7 @@ func (s *Server) registerCommands() {
 		"SET":    (*conn).cmdSet,
 		"GETSET": (*conn).cmdGetSet,
 		"APPEND": (*conn).cmdAppend,
+		"STRLEN": (*conn).cmdStrLen,
 		"INCR":   (*conn).cmdIncr,
 		"DECR":   (*conn).cmdDecr,
 		"INCRBY": (*conn).cmdIncrBy,
