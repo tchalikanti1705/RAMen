@@ -247,15 +247,14 @@ Thanks to these wonderful people who help make RAMen better.
       <a href="https://github.com/Rohit-Dnath">
         <img src="https://avatars.githubusercontent.com/u/136178612?v=4" width="90" height="90" style="border-radius:50%" alt="Rohit-Dnath"><br>
         <sub><b>Rohit-Dnath</b></sub><br>
-        <sub>🍜 Creator &amp; Maintainer</sub><br>
-        <img src="https://img.shields.io/badge/-Founder-orange?style=flat-square" alt="Founder">
+        <img src="https://img.shields.io/badge/%F0%9F%8D%9C%20Creator%20%26%20Maintainer-E8590C?style=for-the-badge&labelColor=E8590C" alt="Creator & Maintainer">
       </a>
     </td>
     <td align="center">
       <a href="https://github.com/bayrambartu">
         <img src="https://avatars.githubusercontent.com/u/113308882?v=4" width="80" height="80" style="border-radius:50%" alt="bayrambartu"><br>
         <sub><b>bayrambartu</b></sub><br>
-        <sub>Contributor</sub>
+        <img src="https://img.shields.io/badge/Contributor-495057?style=for-the-badge&labelColor=495057" alt="Contributor">
       </a>
     </td>
   </tr>
