@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(gh pr review 21 --approve --body 'Thanks for putting this together, Bayram. Clean set of templates and it lines up nicely with the Go workflow. Merging it now. *)",
-      "Bash(gh pr *)"
+      "Bash(gh pr *)",
+      "Bash(gh issue *)"
     ]
   }
 }
