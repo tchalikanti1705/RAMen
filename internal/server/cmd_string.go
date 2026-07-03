@@ -8,6 +8,9 @@ import (
 	"github.com/Rohit-Dnath/RAMen/internal/store"
 )
 
+// maxStringSize caps a string value at 512MB, matching Redis' proto-max-bulk-len.
+const maxStringSize = 512 * 1024 * 1024
+
 func (c *conn) cmdGet(args []string) error {
 	if len(args) != 2 {
 		return c.wrongArgs("get")
@@ -191,6 +194,12 @@ func (c *conn) cmdSetRange(args []string) error {
 	}
 	if offset < 0 {
 		return c.writeError("ERR offset is out of range")
+	}
+	// Reject writes that would exceed the max string size before allocating,
+	// like Redis' proto-max-bulk-len. The check is done in int64 to avoid the
+	// offset+len overflow that would otherwise panic in SetRange.
+	if offset > maxStringSize-int64(len(args[3])) {
+		return c.writeError("ERR string exceeds maximum allowed size (proto-max-bulk-len)")
 	}
 	n, err := c.s.store.SetRange(args[1], int(offset), args[3])
 	if err != nil {
