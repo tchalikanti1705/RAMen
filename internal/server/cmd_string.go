@@ -180,3 +180,21 @@ func (c *conn) cmdGetRange(args []string) error {
 	}
 	return c.writeBulk(v)
 }
+
+func (c *conn) cmdSetRange(args []string) error {
+	if len(args) != 4 {
+		return c.wrongArgs("setrange")
+	}
+	offset, err := strconv.ParseInt(args[2], 10, 64)
+	if err != nil {
+		return c.writeError(store.ErrNotInteger.Error())
+	}
+	if offset < 0 {
+		return c.writeError("ERR offset is out of range")
+	}
+	n, err := c.s.store.SetRange(args[1], int(offset), args[3])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeInt(int64(n))
+}

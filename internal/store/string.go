@@ -164,3 +164,37 @@ func (s *Store) GetRange(key string, start, end int64) (string, error) {
 	}
 	return str[start : end+1], nil
 }
+
+// SetRange overwrites the string at key starting at offset with val, growing the
+// value with zero bytes when offset is past the current end (creating the key if
+// missing). It returns the length of the string after the write.
+func (s *Store) SetRange(key string, offset int, val string) (int, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	var cur string
+	e, found := sh.getLive(key, s.now())
+	if found {
+		str, err := asString(e)
+		if err != nil {
+			return 0, err
+		}
+		cur = str
+	}
+	if val == "" {
+		return len(cur), nil
+	}
+	size := offset + len(val)
+	if len(cur) > size {
+		size = len(cur)
+	}
+	buf := make([]byte, size)
+	copy(buf, cur)
+	copy(buf[offset:], val)
+	if found {
+		e.val = string(buf)
+	} else {
+		sh.m[key] = &entry{val: string(buf)}
+	}
+	return size, nil
+}
