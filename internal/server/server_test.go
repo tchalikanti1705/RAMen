@@ -258,4 +258,16 @@ func TestSetRange(t *testing.T) {
 	if r := mustDo(t, cli, "GET", "pad"); r != "\x00\x00\x00\x00\x00hi" {
 		t.Fatalf("GET pad = %q, want 5 zero bytes then hi", r)
 	}
+
+	// A huge offset must be rejected with an error, not crash the server.
+	r, err := cli.Do("SETRANGE", "big", "9223372036854775807", "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.(error); !ok {
+		t.Fatalf("SETRANGE huge offset = %v, want error", r)
+	}
+	if r := mustDo(t, cli, "PING"); r != "PONG" {
+		t.Fatalf("PING after huge SETRANGE = %v, server may have crashed", r)
+	}
 }
