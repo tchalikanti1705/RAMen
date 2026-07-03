@@ -11,6 +11,7 @@
   <img src="https://img.shields.io/badge/status-V1%20%2B%20V2%20preview-orange" alt="status">
   <img src="https://img.shields.io/badge/go-1.25-00ADD8" alt="go">
   <img src="https://img.shields.io/badge/license-BSD--3--Clause-blue" alt="license">
+  <a href="https://wise.com/pay/business/rohitdebnath2?utm_source=open_link"><img src="https://img.shields.io/badge/support-RAMen-9FE870?logo=wise&logoColor=163300&labelColor=163300" alt="Support RAMen"></a>
 </p>
 
 RAMen is a fast in-memory data store, like Redis, but built for AI apps and AI agents.
@@ -223,6 +224,18 @@ ramen
 - Done: core Redis commands, strings, hashes, lists, sets, sorted sets, expiry, pub/sub, snapshot saving.
 - Done: vector store, semantic cache, agent memory, MCP server, dashboard.
 - Next: replication, stronger durability, clustering, faster vector index (HNSW).
+
+## Support the project
+
+RAMen is free and open source, and it always will be. If it saves you time or you would like to help fund its development, you can support the work directly. It genuinely helps keep the project moving.
+
+<p align="center">
+  <a href="https://wise.com/pay/business/rohitdebnath2?utm_source=open_link">
+    <img src="https://img.shields.io/badge/Support%20RAMen%20via%20Wise-9FE870?style=for-the-badge&logo=wise&logoColor=163300&labelColor=163300" alt="Support RAMen via Wise">
+  </a>
+</p>
+
+Not in a position to chip in? A star, a share, or a bug report helps just as much. Thank you.
 
 ## Contributing
 
