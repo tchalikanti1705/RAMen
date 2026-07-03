@@ -195,3 +195,26 @@ func startTestServerClientOn(t *testing.T, cli *client.Client) (*client.Client, 
 	}
 	return c2, func() { c2.Close() }
 }
+
+func TestStrLen(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "STRLEN", "nope"); r != int64(0) {
+		t.Fatalf("STRLEN missing = %v, want 0", r)
+	}
+	mustDo(t, cli, "SET", "s", "Hello World")
+	if r := mustDo(t, cli, "STRLEN", "s"); r != int64(11) {
+		t.Fatalf("STRLEN = %v, want 11", r)
+	}
+
+	// STRLEN on a non-string key must return a WRONGTYPE error, not crash.
+	mustDo(t, cli, "RPUSH", "l", "a")
+	r, err := cli.Do("STRLEN", "l")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.(error); !ok {
+		t.Fatalf("STRLEN on a list = %v, want WRONGTYPE error", r)
+	}
+}
