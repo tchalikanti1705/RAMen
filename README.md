@@ -245,14 +245,17 @@ Thanks to these wonderful people who help make RAMen better.
   <tr>
     <td align="center">
       <a href="https://github.com/Rohit-Dnath">
-        <img src="https://avatars.githubusercontent.com/u/136178612?v=4" width="80" height="80" style="border-radius:50%" alt="Rohit-Dnath"><br>
-        <sub><b>Rohit-Dnath</b></sub>
+        <img src="https://avatars.githubusercontent.com/u/136178612?v=4" width="90" height="90" style="border-radius:50%" alt="Rohit-Dnath"><br>
+        <sub><b>Rohit-Dnath</b></sub><br>
+        <sub>🍜 Creator &amp; Maintainer</sub><br>
+        <img src="https://img.shields.io/badge/-Founder-orange?style=flat-square" alt="Founder">
       </a>
     </td>
     <td align="center">
       <a href="https://github.com/bayrambartu">
         <img src="https://avatars.githubusercontent.com/u/113308882?v=4" width="80" height="80" style="border-radius:50%" alt="bayrambartu"><br>
-        <sub><b>bayrambartu</b></sub>
+        <sub><b>bayrambartu</b></sub><br>
+        <sub>Contributor</sub>
       </a>
     </td>
   </tr>
