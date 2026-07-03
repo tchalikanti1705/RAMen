@@ -46,6 +46,7 @@ func (s *Server) registerCommands() {
 		"APPEND":   (*conn).cmdAppend,
 		"STRLEN":   (*conn).cmdStrLen,
 		"GETRANGE": (*conn).cmdGetRange,
+		"SETRANGE": (*conn).cmdSetRange,
 		"INCR":     (*conn).cmdIncr,
 		"DECR":     (*conn).cmdDecr,
 		"INCRBY":   (*conn).cmdIncrBy,
