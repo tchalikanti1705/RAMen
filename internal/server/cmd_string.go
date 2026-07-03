@@ -161,3 +161,22 @@ func (c *conn) cmdStrLen(args []string) error {
 	}
 	return c.writeInt(int64(len(v)))
 }
+
+func (c *conn) cmdGetRange(args []string) error {
+	if len(args) != 4 {
+		return c.wrongArgs("getrange")
+	}
+	start, err := strconv.ParseInt(args[2], 10, 64)
+	if err != nil {
+		return c.writeError(store.ErrNotInteger.Error())
+	}
+	end, err := strconv.ParseInt(args[3], 10, 64)
+	if err != nil {
+		return c.writeError(store.ErrNotInteger.Error())
+	}
+	v, err := c.s.store.GetRange(args[1], start, end)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeBulk(v)
+}

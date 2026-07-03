@@ -130,3 +130,37 @@ func (s *Store) IncrBy(key string, delta int64) (int64, error) {
 	}
 	return cur, nil
 }
+
+// GetRange returns the substring of the string at key between start and end
+// (both inclusive). Negative offsets count back from the end and out-of-range
+// offsets are clamped, matching Redis. A missing key yields an empty string.
+func (s *Store) GetRange(key string, start, end int64) (string, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return "", nil
+	}
+	str, err := asString(e)
+	if err != nil {
+		return "", err
+	}
+	n := int64(len(str))
+	if start < 0 {
+		start += n
+	}
+	if end < 0 {
+		end += n
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end >= n {
+		end = n - 1
+	}
+	if start > end {
+		return "", nil
+	}
+	return str[start : end+1], nil
+}
