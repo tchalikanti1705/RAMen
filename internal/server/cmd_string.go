@@ -147,3 +147,17 @@ func (c *conn) cmdMSet(args []string) error {
 	}
 	return c.writeSimple("OK")
 }
+
+func (c *conn) cmdStrLen(args []string) error {
+	if len(args) != 2 {
+		return c.wrongArgs("strlen")
+	}
+	v, ok, err := c.s.store.Get(args[1])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	if !ok {
+		return c.writeInt(0)
+	}
+	return c.writeInt(int64(len(v)))
+}
