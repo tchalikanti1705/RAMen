@@ -41,6 +41,9 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 | `GET <key>` | Get a string. |
 | `GETSET <key> <value>` | Set and return the old value. |
 | `APPEND <key> <value>` | Append; returns new length. |
+| `STRLEN <key>` | Length of the string in bytes; `0` if missing. |
+| `GETRANGE <key> <start> <end>` | Substring by inclusive offsets; negative counts from the end. |
+| `SETRANGE <key> <offset> <value>` | Overwrite from `offset`, zero-padding past the end; returns new length. |
 | `INCR <key>` / `DECR <key>` | ±1 on an integer string. |
 | `INCRBY <key> <n>` / `DECRBY <key> <n>` | ±n. |
 | `MGET <key> [key ...]` | Multiple gets. |
