@@ -238,3 +238,24 @@ func TestGetRange(t *testing.T) {
 		t.Fatalf("GETRANGE missing = %v, want empty", r)
 	}
 }
+
+func TestSetRange(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "SET", "s", "Hello World")
+	if r := mustDo(t, cli, "SETRANGE", "s", "6", "Redis"); r != int64(11) {
+		t.Fatalf("SETRANGE = %v, want 11", r)
+	}
+	if r := mustDo(t, cli, "GET", "s"); r != "Hello Redis" {
+		t.Fatalf("GET after SETRANGE = %v, want Hello Redis", r)
+	}
+
+	// Writing past the end of a missing key zero-pads the gap.
+	if r := mustDo(t, cli, "SETRANGE", "pad", "5", "hi"); r != int64(7) {
+		t.Fatalf("SETRANGE pad = %v, want 7", r)
+	}
+	if r := mustDo(t, cli, "GET", "pad"); r != "\x00\x00\x00\x00\x00hi" {
+		t.Fatalf("GET pad = %q, want 5 zero bytes then hi", r)
+	}
+}
