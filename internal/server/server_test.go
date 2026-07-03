@@ -218,3 +218,23 @@ func TestStrLen(t *testing.T) {
 		t.Fatalf("STRLEN on a list = %v, want WRONGTYPE error", r)
 	}
 }
+
+func TestGetRange(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "SET", "s", "Hello World")
+	if r := mustDo(t, cli, "GETRANGE", "s", "0", "4"); r != "Hello" {
+		t.Fatalf("GETRANGE 0 4 = %v, want Hello", r)
+	}
+	if r := mustDo(t, cli, "GETRANGE", "s", "-5", "-1"); r != "World" {
+		t.Fatalf("GETRANGE -5 -1 = %v, want World", r)
+	}
+	if r := mustDo(t, cli, "GETRANGE", "s", "0", "-1"); r != "Hello World" {
+		t.Fatalf("GETRANGE 0 -1 = %v, want Hello World", r)
+	}
+	// A missing key yields an empty string.
+	if r := mustDo(t, cli, "GETRANGE", "nope", "0", "10"); r != "" {
+		t.Fatalf("GETRANGE missing = %v, want empty", r)
+	}
+}
