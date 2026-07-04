@@ -208,7 +208,6 @@ func TestStrLen(t *testing.T) {
 		t.Fatalf("STRLEN = %v, want 11", r)
 	}
 
-	// STRLEN on a non-string key must return a WRONGTYPE error, not crash.
 	mustDo(t, cli, "RPUSH", "l", "a")
 	r, err := cli.Do("STRLEN", "l")
 	if err != nil {
@@ -233,11 +232,9 @@ func TestGetRange(t *testing.T) {
 	if r := mustDo(t, cli, "GETRANGE", "s", "0", "-1"); r != "Hello World" {
 		t.Fatalf("GETRANGE 0 -1 = %v, want Hello World", r)
 	}
-	// A missing key yields an empty string.
 	if r := mustDo(t, cli, "GETRANGE", "nope", "0", "10"); r != "" {
 		t.Fatalf("GETRANGE missing = %v, want empty", r)
 	}
-	// A negative end that runs past the start clamps to the first byte, like Redis.
 	if r := mustDo(t, cli, "GETRANGE", "s", "0", "-12"); r != "H" {
 		t.Fatalf("GETRANGE 0 -12 = %v, want H", r)
 	}
@@ -255,7 +252,6 @@ func TestSetRange(t *testing.T) {
 		t.Fatalf("GET after SETRANGE = %v, want Hello Redis", r)
 	}
 
-	// Writing past the end of a missing key zero-pads the gap.
 	if r := mustDo(t, cli, "SETRANGE", "pad", "5", "hi"); r != int64(7) {
 		t.Fatalf("SETRANGE pad = %v, want 7", r)
 	}
@@ -263,7 +259,6 @@ func TestSetRange(t *testing.T) {
 		t.Fatalf("GET pad = %q, want 5 zero bytes then hi", r)
 	}
 
-	// A huge offset must be rejected with an error, not crash the server.
 	r, err := cli.Do("SETRANGE", "big", "9223372036854775807", "x")
 	if err != nil {
 		t.Fatal(err)

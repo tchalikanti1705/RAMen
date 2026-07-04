@@ -131,9 +131,8 @@ func (s *Store) IncrBy(key string, delta int64) (int64, error) {
 	return cur, nil
 }
 
-// GetRange returns the substring of the string at key between start and end
-// (both inclusive). Negative offsets count back from the end and out-of-range
-// offsets are clamped, matching Redis. A missing key yields an empty string.
+// GetRange returns the substring between start and end (inclusive), with Redis-style
+// negative offsets and clamping. A missing key yields an empty string.
 func (s *Store) GetRange(key string, start, end int64) (string, error) {
 	sh := s.shardFor(key)
 	sh.mu.Lock()
@@ -168,9 +167,8 @@ func (s *Store) GetRange(key string, start, end int64) (string, error) {
 	return str[start : end+1], nil
 }
 
-// SetRange overwrites the string at key starting at offset with val, growing the
-// value with zero bytes when offset is past the current end (creating the key if
-// missing). It returns the length of the string after the write.
+// SetRange overwrites from offset with val, zero-padding past the current end.
+// It returns the length of the string after the write.
 func (s *Store) SetRange(key string, offset int, val string) (int, error) {
 	sh := s.shardFor(key)
 	sh.mu.Lock()

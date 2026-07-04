@@ -195,9 +195,7 @@ func (c *conn) cmdSetRange(args []string) error {
 	if offset < 0 {
 		return c.writeError("ERR offset is out of range")
 	}
-	// Reject writes that would exceed the max string size before allocating,
-	// like Redis' proto-max-bulk-len. The check is done in int64 to avoid the
-	// offset+len overflow that would otherwise panic in SetRange.
+	// Bound the size before allocating (overflow-safe), like Redis' proto-max-bulk-len.
 	if offset > maxStringSize-int64(len(args[3])) {
 		return c.writeError("ERR string exceeds maximum allowed size (proto-max-bulk-len)")
 	}
