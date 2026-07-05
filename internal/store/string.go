@@ -130,3 +130,72 @@ func (s *Store) IncrBy(key string, delta int64) (int64, error) {
 	}
 	return cur, nil
 }
+
+// GetRange returns the substring between start and end (inclusive), with Redis-style
+// negative offsets and clamping. A missing key yields an empty string.
+func (s *Store) GetRange(key string, start, end int64) (string, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return "", nil
+	}
+	str, err := asString(e)
+	if err != nil {
+		return "", err
+	}
+	n := int64(len(str))
+	if start < 0 {
+		start += n
+	}
+	if end < 0 {
+		end += n
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end < 0 {
+		end = 0
+	}
+	if end >= n {
+		end = n - 1
+	}
+	if start > end {
+		return "", nil
+	}
+	return str[start : end+1], nil
+}
+
+// SetRange overwrites from offset with val, zero-padding past the current end.
+// It returns the length of the string after the write.
+func (s *Store) SetRange(key string, offset int, val string) (int, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	var cur string
+	e, found := sh.getLive(key, s.now())
+	if found {
+		str, err := asString(e)
+		if err != nil {
+			return 0, err
+		}
+		cur = str
+	}
+	if val == "" {
+		return len(cur), nil
+	}
+	size := offset + len(val)
+	if len(cur) > size {
+		size = len(cur)
+	}
+	buf := make([]byte, size)
+	copy(buf, cur)
+	copy(buf[offset:], val)
+	if found {
+		e.val = string(buf)
+	} else {
+		sh.m[key] = &entry{val: string(buf)}
+	}
+	return size, nil
+}

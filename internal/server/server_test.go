@@ -195,3 +195,78 @@ func startTestServerClientOn(t *testing.T, cli *client.Client) (*client.Client, 
 	}
 	return c2, func() { c2.Close() }
 }
+
+func TestStrLen(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "STRLEN", "nope"); r != int64(0) {
+		t.Fatalf("STRLEN missing = %v, want 0", r)
+	}
+	mustDo(t, cli, "SET", "s", "Hello World")
+	if r := mustDo(t, cli, "STRLEN", "s"); r != int64(11) {
+		t.Fatalf("STRLEN = %v, want 11", r)
+	}
+
+	mustDo(t, cli, "RPUSH", "l", "a")
+	r, err := cli.Do("STRLEN", "l")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.(error); !ok {
+		t.Fatalf("STRLEN on a list = %v, want WRONGTYPE error", r)
+	}
+}
+
+func TestGetRange(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "SET", "s", "Hello World")
+	if r := mustDo(t, cli, "GETRANGE", "s", "0", "4"); r != "Hello" {
+		t.Fatalf("GETRANGE 0 4 = %v, want Hello", r)
+	}
+	if r := mustDo(t, cli, "GETRANGE", "s", "-5", "-1"); r != "World" {
+		t.Fatalf("GETRANGE -5 -1 = %v, want World", r)
+	}
+	if r := mustDo(t, cli, "GETRANGE", "s", "0", "-1"); r != "Hello World" {
+		t.Fatalf("GETRANGE 0 -1 = %v, want Hello World", r)
+	}
+	if r := mustDo(t, cli, "GETRANGE", "nope", "0", "10"); r != "" {
+		t.Fatalf("GETRANGE missing = %v, want empty", r)
+	}
+	if r := mustDo(t, cli, "GETRANGE", "s", "0", "-12"); r != "H" {
+		t.Fatalf("GETRANGE 0 -12 = %v, want H", r)
+	}
+}
+
+func TestSetRange(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "SET", "s", "Hello World")
+	if r := mustDo(t, cli, "SETRANGE", "s", "6", "Redis"); r != int64(11) {
+		t.Fatalf("SETRANGE = %v, want 11", r)
+	}
+	if r := mustDo(t, cli, "GET", "s"); r != "Hello Redis" {
+		t.Fatalf("GET after SETRANGE = %v, want Hello Redis", r)
+	}
+
+	if r := mustDo(t, cli, "SETRANGE", "pad", "5", "hi"); r != int64(7) {
+		t.Fatalf("SETRANGE pad = %v, want 7", r)
+	}
+	if r := mustDo(t, cli, "GET", "pad"); r != "\x00\x00\x00\x00\x00hi" {
+		t.Fatalf("GET pad = %q, want 5 zero bytes then hi", r)
+	}
+
+	r, err := cli.Do("SETRANGE", "big", "9223372036854775807", "x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := r.(error); !ok {
+		t.Fatalf("SETRANGE huge offset = %v, want error", r)
+	}
+	if r := mustDo(t, cli, "PING"); r != "PONG" {
+		t.Fatalf("PING after huge SETRANGE = %v, server may have crashed", r)
+	}
+}

@@ -8,6 +8,9 @@ import (
 	"github.com/Rohit-Dnath/RAMen/internal/store"
 )
 
+// maxStringSize caps a string value at 512MB, matching Redis' proto-max-bulk-len.
+const maxStringSize = 512 * 1024 * 1024
+
 func (c *conn) cmdGet(args []string) error {
 	if len(args) != 2 {
 		return c.wrongArgs("get")
@@ -146,4 +149,59 @@ func (c *conn) cmdMSet(args []string) error {
 		c.s.store.Set(args[i], args[i+1], store.SetOptions{})
 	}
 	return c.writeSimple("OK")
+}
+
+func (c *conn) cmdStrLen(args []string) error {
+	if len(args) != 2 {
+		return c.wrongArgs("strlen")
+	}
+	v, ok, err := c.s.store.Get(args[1])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	if !ok {
+		return c.writeInt(0)
+	}
+	return c.writeInt(int64(len(v)))
+}
+
+func (c *conn) cmdGetRange(args []string) error {
+	if len(args) != 4 {
+		return c.wrongArgs("getrange")
+	}
+	start, err := strconv.ParseInt(args[2], 10, 64)
+	if err != nil {
+		return c.writeError(store.ErrNotInteger.Error())
+	}
+	end, err := strconv.ParseInt(args[3], 10, 64)
+	if err != nil {
+		return c.writeError(store.ErrNotInteger.Error())
+	}
+	v, err := c.s.store.GetRange(args[1], start, end)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeBulk(v)
+}
+
+func (c *conn) cmdSetRange(args []string) error {
+	if len(args) != 4 {
+		return c.wrongArgs("setrange")
+	}
+	offset, err := strconv.ParseInt(args[2], 10, 64)
+	if err != nil {
+		return c.writeError(store.ErrNotInteger.Error())
+	}
+	if offset < 0 {
+		return c.writeError("ERR offset is out of range")
+	}
+	// Bound the size before allocating (overflow-safe), like Redis' proto-max-bulk-len.
+	if offset > maxStringSize-int64(len(args[3])) {
+		return c.writeError("ERR string exceeds maximum allowed size (proto-max-bulk-len)")
+	}
+	n, err := c.s.store.SetRange(args[1], int(offset), args[3])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeInt(int64(n))
 }
