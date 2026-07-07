@@ -88,7 +88,7 @@ func TestHashIncrBy(t *testing.T) {
 		t.Fatalf("HGet after HIncrBy existing = %q %v %v", v, found, err)
 	}
 	s.HSet("h", map[string]string{"bad": "abc"})
-	if _, err := s.HIncrBy("h", "bad", 1); err != ErrNotInteger {
+	if _, err := s.HIncrBy("h", "bad", 1); err != ErrHashNotInteger {
 		t.Fatalf("HIncrBy non-integer field = %v", err)
 	}
 	if v, found, err := s.HGet("h", "bad"); err != nil || !found || v != "abc" {
@@ -101,6 +101,14 @@ func TestHashIncrBy(t *testing.T) {
 	}
 	if v, found, err := s.HGet("h", "max"); err != nil || !found || v != max {
 		t.Fatalf("HIncrBy changed overflow field = %q %v %v", v, found, err)
+	}
+	min := strconv.FormatInt(math.MinInt64, 10)
+	s.HSet("h", map[string]string{"min": min})
+	if _, err := s.HIncrBy("h", "min", -1); err != ErrIntegerOverflow {
+		t.Fatalf("HIncrBy underflow = %v", err)
+	}
+	if v, found, err := s.HGet("h", "min"); err != nil || !found || v != min {
+		t.Fatalf("HIncrBy changed underflow field = %q %v %v", v, found, err)
 	}
 	s.Set("str", "value", SetOptions{})
 	if _, err := s.HIncrBy("str", "f", 1); err != ErrWrongType {
@@ -122,16 +130,25 @@ func TestHashIncrByFloat(t *testing.T) {
 	if err != nil || v != "0" {
 		t.Fatalf("HIncrByFloat zero normalization = %q %v", v, err)
 	}
+	v, err = s.HIncrByFloat("h", "whole", 5)
+	if err != nil || v != "5" {
+		t.Fatalf("HIncrByFloat integer-valued result = %q %v", v, err)
+	}
+	s.HSet("h", map[string]string{"neg": "-0"})
+	v, err = s.HIncrByFloat("h", "neg", math.Copysign(0, -1))
+	if err != nil || v != "0" {
+		t.Fatalf("HIncrByFloat negative-zero normalization = %q %v", v, err)
+	}
 	s.HSet("h", map[string]string{"sci": "1e3"})
 	v, err = s.HIncrByFloat("h", "sci", 0.5)
 	if err != nil || v != "1000.5" {
 		t.Fatalf("HIncrByFloat scientific field = %q %v", v, err)
 	}
 	s.HSet("h", map[string]string{"bad": "abc", "nan": "NaN"})
-	if _, err := s.HIncrByFloat("h", "bad", 1); err != ErrNotFloat {
+	if _, err := s.HIncrByFloat("h", "bad", 1); err != ErrHashNotFloat {
 		t.Fatalf("HIncrByFloat bad field = %v", err)
 	}
-	if _, err := s.HIncrByFloat("h", "nan", 1); err != ErrNotFloat {
+	if _, err := s.HIncrByFloat("h", "nan", 1); err != ErrHashNotFloat {
 		t.Fatalf("HIncrByFloat NaN field = %v", err)
 	}
 	if _, err := s.HIncrByFloat("h", "inf-delta", math.Inf(1)); err != ErrNotFloat {

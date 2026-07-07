@@ -85,7 +85,7 @@ func (s *Store) HIncrBy(key, field string, delta int64) (int64, error) {
 	if v, ok := h[field]; ok {
 		n, err := strconv.ParseInt(v, 10, 64)
 		if err != nil {
-			return 0, ErrNotInteger
+			return 0, ErrHashNotInteger
 		}
 		cur = n
 	}
@@ -120,7 +120,7 @@ func (s *Store) HIncrByFloat(key, field string, delta float64) (string, error) {
 	if v, ok := h[field]; ok {
 		n, err := strconv.ParseFloat(v, 64)
 		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
-			return "", ErrNotFloat
+			return "", ErrHashNotFloat
 		}
 		cur = n
 	}
@@ -128,6 +128,7 @@ func (s *Store) HIncrByFloat(key, field string, delta float64) (string, error) {
 	if math.IsNaN(cur) || math.IsInf(cur, 0) {
 		return "", ErrFloatOverflow
 	}
+	// normalize negative zero so we return "0", not "-0", like Redis
 	if cur == 0 {
 		cur = 0
 	}

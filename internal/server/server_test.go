@@ -144,6 +144,9 @@ func TestDataStructures(t *testing.T) {
 	if r := mustDo(t, cli, "HINCRBYFLOAT", "h", "score", "-3.75"); r != "0" {
 		t.Fatalf("HINCRBYFLOAT zero normalization = %v", r)
 	}
+	if r := mustDo(t, cli, "HINCRBYFLOAT", "h", "whole", "5"); r != "5" {
+		t.Fatalf("HINCRBYFLOAT integer-valued = %v", r)
+	}
 
 	mustDo(t, cli, "SADD", "s", "x", "y", "x")
 	if r := mustDo(t, cli, "SCARD", "s"); r != int64(2) {
@@ -185,6 +188,13 @@ func TestHashIncrByErrors(t *testing.T) {
 	mustError(t, cli, "HINCRBY", "h", "max", "1")
 	if r := mustDo(t, cli, "HGET", "h", "max"); r != max {
 		t.Fatalf("HINCRBY changed overflow field = %v", r)
+	}
+
+	min := strconv.FormatInt(math.MinInt64, 10)
+	mustDo(t, cli, "HSET", "h", "min", min)
+	mustError(t, cli, "HINCRBY", "h", "min", "-1")
+	if r := mustDo(t, cli, "HGET", "h", "min"); r != min {
+		t.Fatalf("HINCRBY changed underflow field = %v", r)
 	}
 
 	mustDo(t, cli, "SET", "str", "value")

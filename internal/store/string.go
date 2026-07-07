@@ -23,6 +23,12 @@ var ErrNotFloat = errors.New("ERR value is not a valid float")
 // ErrFloatOverflow is returned when a float increment would produce NaN or Infinity.
 var ErrFloatOverflow = errors.New("ERR increment would produce NaN or Infinity")
 
+// ErrHashNotInteger mirrors Redis' HINCRBY error for a field whose value is not an integer.
+var ErrHashNotInteger = errors.New("ERR hash value is not an integer")
+
+// ErrHashNotFloat mirrors Redis' HINCRBYFLOAT error for a field whose value is not a float.
+var ErrHashNotFloat = errors.New("ERR hash value is not a float")
+
 // asString returns the string value of e, or ErrWrongType.
 func asString(e *entry) (string, error) {
 	s, ok := e.val.(string)
