@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"math"
 	"net"
+	"strconv"
 	"testing"
 	"time"
 
@@ -124,6 +126,15 @@ func TestDataStructures(t *testing.T) {
 	if r := mustDo(t, cli, "HGET", "h", ""); r != "" {
 		t.Fatalf("HGET empty field = %v", r)
 	}
+	if r := mustDo(t, cli, "HINCRBY", "h", "count", "5"); r != int64(5) {
+		t.Fatalf("HINCRBY create = %v", r)
+	}
+	if r := mustDo(t, cli, "HINCRBY", "h", "count", "-2"); r != int64(3) {
+		t.Fatalf("HINCRBY existing = %v", r)
+	}
+	if r := mustDo(t, cli, "HGET", "h", "count"); r != "3" {
+		t.Fatalf("HGET after HINCRBY = %v", r)
+	}
 
 	mustDo(t, cli, "SADD", "s", "x", "y", "x")
 	if r := mustDo(t, cli, "SCARD", "s"); r != int64(2) {
@@ -144,6 +155,31 @@ func TestHashSetNXErrors(t *testing.T) {
 	mustError(t, cli, "HSETNX", "h", "field")
 	mustDo(t, cli, "SET", "str", "value")
 	mustError(t, cli, "HSETNX", "str", "field", "value")
+}
+
+func TestHashIncrByErrors(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustError(t, cli, "HINCRBY", "h", "field")
+	mustError(t, cli, "HINCRBY", "h", "field", "not-an-int")
+	mustError(t, cli, "HINCRBY", "h", "field", "9223372036854775808")
+
+	mustDo(t, cli, "HSET", "h", "bad", "abc")
+	mustError(t, cli, "HINCRBY", "h", "bad", "1")
+	if r := mustDo(t, cli, "HGET", "h", "bad"); r != "abc" {
+		t.Fatalf("HINCRBY changed bad field = %v", r)
+	}
+
+	max := strconv.FormatInt(math.MaxInt64, 10)
+	mustDo(t, cli, "HSET", "h", "max", max)
+	mustError(t, cli, "HINCRBY", "h", "max", "1")
+	if r := mustDo(t, cli, "HGET", "h", "max"); r != max {
+		t.Fatalf("HINCRBY changed overflow field = %v", r)
+	}
+
+	mustDo(t, cli, "SET", "str", "value")
+	mustError(t, cli, "HINCRBY", "str", "field", "1")
 }
 
 func TestVectorCommands(t *testing.T) {

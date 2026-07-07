@@ -1,6 +1,8 @@
 package store
 
 import (
+	"math"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -66,6 +68,43 @@ func TestHashSetNX(t *testing.T) {
 	s.Set("str", "value", SetOptions{})
 	if _, err := s.HSetNX("str", "f", "v"); err != ErrWrongType {
 		t.Fatalf("HSetNX wrong type = %v", err)
+	}
+}
+
+func TestHashIncrBy(t *testing.T) {
+	s := New()
+	n, err := s.HIncrBy("h", "count", 5)
+	if err != nil || n != 5 {
+		t.Fatalf("HIncrBy create = %d %v", n, err)
+	}
+	if v, found, err := s.HGet("h", "count"); err != nil || !found || v != "5" {
+		t.Fatalf("HGet after HIncrBy create = %q %v %v", v, found, err)
+	}
+	n, err = s.HIncrBy("h", "count", -2)
+	if err != nil || n != 3 {
+		t.Fatalf("HIncrBy existing = %d %v", n, err)
+	}
+	if v, found, err := s.HGet("h", "count"); err != nil || !found || v != "3" {
+		t.Fatalf("HGet after HIncrBy existing = %q %v %v", v, found, err)
+	}
+	s.HSet("h", map[string]string{"bad": "abc"})
+	if _, err := s.HIncrBy("h", "bad", 1); err != ErrNotInteger {
+		t.Fatalf("HIncrBy non-integer field = %v", err)
+	}
+	if v, found, err := s.HGet("h", "bad"); err != nil || !found || v != "abc" {
+		t.Fatalf("HIncrBy changed bad field = %q %v %v", v, found, err)
+	}
+	max := strconv.FormatInt(math.MaxInt64, 10)
+	s.HSet("h", map[string]string{"max": max})
+	if _, err := s.HIncrBy("h", "max", 1); err != ErrIntegerOverflow {
+		t.Fatalf("HIncrBy overflow = %v", err)
+	}
+	if v, found, err := s.HGet("h", "max"); err != nil || !found || v != max {
+		t.Fatalf("HIncrBy changed overflow field = %q %v %v", v, found, err)
+	}
+	s.Set("str", "value", SetOptions{})
+	if _, err := s.HIncrBy("str", "f", 1); err != ErrWrongType {
+		t.Fatalf("HIncrBy wrong type = %v", err)
 	}
 }
 
