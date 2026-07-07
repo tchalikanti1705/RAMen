@@ -16,6 +16,17 @@ func (c *conn) cmdHSet(args []string) error {
 	return c.writeInt(int64(n))
 }
 
+func (c *conn) cmdHSetNX(args []string) error {
+	if len(args) != 4 {
+		return c.wrongArgs("hsetnx")
+	}
+	ok, err := c.s.store.HSetNX(args[1], args[2], args[3])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeInt(boolToInt(ok))
+}
+
 func (c *conn) cmdHGet(args []string) error {
 	if len(args) != 3 {
 		return c.wrongArgs("hget")
