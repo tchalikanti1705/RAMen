@@ -97,6 +97,45 @@ func (s *Store) HIncrBy(key, field string, delta int64) (int64, error) {
 	return cur, nil
 }
 
+// HIncrByFloat adds delta to a float field, treating a missing key or field as 0.
+func (s *Store) HIncrByFloat(key, field string, delta float64) (string, error) {
+	if math.IsNaN(delta) || math.IsInf(delta, 0) {
+		return "", ErrNotFloat
+	}
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	var h map[string]string
+	if found {
+		var err error
+		if h, err = asHash(e); err != nil {
+			return "", err
+		}
+	} else {
+		h = make(map[string]string)
+		sh.m[key] = &entry{val: h}
+	}
+	var cur float64
+	if v, ok := h[field]; ok {
+		n, err := strconv.ParseFloat(v, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
+			return "", ErrNotFloat
+		}
+		cur = n
+	}
+	cur += delta
+	if math.IsNaN(cur) || math.IsInf(cur, 0) {
+		return "", ErrFloatOverflow
+	}
+	if cur == 0 {
+		cur = 0
+	}
+	out := strconv.FormatFloat(cur, 'f', -1, 64)
+	h[field] = out
+	return out, nil
+}
+
 // HGet returns the value of a single field.
 func (s *Store) HGet(key, field string) (string, bool, error) {
 	sh := s.shardFor(key)

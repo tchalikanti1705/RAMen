@@ -17,6 +17,12 @@ var ErrNotInteger = errors.New("ERR value is not an integer or out of range")
 // ErrIntegerOverflow is returned when an increment would overflow int64.
 var ErrIntegerOverflow = errors.New("ERR increment or decrement would overflow")
 
+// ErrNotFloat is returned when a value cannot be parsed as a finite float64.
+var ErrNotFloat = errors.New("ERR value is not a valid float")
+
+// ErrFloatOverflow is returned when a float increment would produce NaN or Infinity.
+var ErrFloatOverflow = errors.New("ERR increment would produce NaN or Infinity")
+
 // asString returns the string value of e, or ErrWrongType.
 func asString(e *entry) (string, error) {
 	s, ok := e.val.(string)
