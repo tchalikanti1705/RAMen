@@ -135,6 +135,15 @@ func TestDataStructures(t *testing.T) {
 	if r := mustDo(t, cli, "HGET", "h", "count"); r != "3" {
 		t.Fatalf("HGET after HINCRBY = %v", r)
 	}
+	if r := mustDo(t, cli, "HINCRBYFLOAT", "h", "score", "1.5"); r != "1.5" {
+		t.Fatalf("HINCRBYFLOAT create = %v", r)
+	}
+	if r := mustDo(t, cli, "HINCRBYFLOAT", "h", "score", "2.25"); r != "3.75" {
+		t.Fatalf("HINCRBYFLOAT existing = %v", r)
+	}
+	if r := mustDo(t, cli, "HINCRBYFLOAT", "h", "score", "-3.75"); r != "0" {
+		t.Fatalf("HINCRBYFLOAT zero normalization = %v", r)
+	}
 
 	mustDo(t, cli, "SADD", "s", "x", "y", "x")
 	if r := mustDo(t, cli, "SCARD", "s"); r != int64(2) {
@@ -180,6 +189,32 @@ func TestHashIncrByErrors(t *testing.T) {
 
 	mustDo(t, cli, "SET", "str", "value")
 	mustError(t, cli, "HINCRBY", "str", "field", "1")
+}
+
+func TestHashIncrByFloatErrors(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustError(t, cli, "HINCRBYFLOAT", "h", "field")
+	mustError(t, cli, "HINCRBYFLOAT", "h", "field", "not-a-float")
+	mustError(t, cli, "HINCRBYFLOAT", "h", "field", "NaN")
+	mustError(t, cli, "HINCRBYFLOAT", "h", "field", "+Inf")
+	mustError(t, cli, "HINCRBYFLOAT", "h", "field", "1e309")
+
+	mustDo(t, cli, "HSET", "h", "bad", "abc")
+	mustError(t, cli, "HINCRBYFLOAT", "h", "bad", "1")
+	if r := mustDo(t, cli, "HGET", "h", "bad"); r != "abc" {
+		t.Fatalf("HINCRBYFLOAT changed bad field = %v", r)
+	}
+
+	mustDo(t, cli, "HSET", "h", "huge", "1e308")
+	mustError(t, cli, "HINCRBYFLOAT", "h", "huge", "1e308")
+	if r := mustDo(t, cli, "HGET", "h", "huge"); r != "1e308" {
+		t.Fatalf("HINCRBYFLOAT changed overflow field = %v", r)
+	}
+
+	mustDo(t, cli, "SET", "str", "value")
+	mustError(t, cli, "HINCRBYFLOAT", "str", "field", "1.5")
 }
 
 func TestVectorCommands(t *testing.T) {

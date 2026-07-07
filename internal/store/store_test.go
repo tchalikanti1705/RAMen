@@ -108,6 +108,51 @@ func TestHashIncrBy(t *testing.T) {
 	}
 }
 
+func TestHashIncrByFloat(t *testing.T) {
+	s := New()
+	v, err := s.HIncrByFloat("h", "score", 1.5)
+	if err != nil || v != "1.5" {
+		t.Fatalf("HIncrByFloat create = %q %v", v, err)
+	}
+	v, err = s.HIncrByFloat("h", "score", 2.25)
+	if err != nil || v != "3.75" {
+		t.Fatalf("HIncrByFloat existing = %q %v", v, err)
+	}
+	v, err = s.HIncrByFloat("h", "score", -3.75)
+	if err != nil || v != "0" {
+		t.Fatalf("HIncrByFloat zero normalization = %q %v", v, err)
+	}
+	s.HSet("h", map[string]string{"sci": "1e3"})
+	v, err = s.HIncrByFloat("h", "sci", 0.5)
+	if err != nil || v != "1000.5" {
+		t.Fatalf("HIncrByFloat scientific field = %q %v", v, err)
+	}
+	s.HSet("h", map[string]string{"bad": "abc", "nan": "NaN"})
+	if _, err := s.HIncrByFloat("h", "bad", 1); err != ErrNotFloat {
+		t.Fatalf("HIncrByFloat bad field = %v", err)
+	}
+	if _, err := s.HIncrByFloat("h", "nan", 1); err != ErrNotFloat {
+		t.Fatalf("HIncrByFloat NaN field = %v", err)
+	}
+	if _, err := s.HIncrByFloat("h", "inf-delta", math.Inf(1)); err != ErrNotFloat {
+		t.Fatalf("HIncrByFloat infinite delta = %v", err)
+	}
+	if _, found, err := s.HGet("h", "inf-delta"); err != nil || found {
+		t.Fatalf("HIncrByFloat wrote infinite delta field = %v %v", found, err)
+	}
+	s.HSet("h", map[string]string{"huge": "1e308"})
+	if _, err := s.HIncrByFloat("h", "huge", 1e308); err != ErrFloatOverflow {
+		t.Fatalf("HIncrByFloat overflow = %v", err)
+	}
+	if got, found, err := s.HGet("h", "huge"); err != nil || !found || got != "1e308" {
+		t.Fatalf("HIncrByFloat changed overflow field = %q %v %v", got, found, err)
+	}
+	s.Set("str", "value", SetOptions{})
+	if _, err := s.HIncrByFloat("str", "f", 1.5); err != ErrWrongType {
+		t.Fatalf("HIncrByFloat wrong type = %v", err)
+	}
+}
+
 func TestWrongType(t *testing.T) {
 	s := New()
 	s.LPush("l", "a")

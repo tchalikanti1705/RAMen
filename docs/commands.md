@@ -51,12 +51,13 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 
 ## Hashes
 
-`HSET`, `HSETNX`, `HINCRBY`, `HGET`, `HDEL`, `HGETALL`, `HKEYS`, `HVALS`, `HLEN`, `HEXISTS`, `HMGET`.
+`HSET`, `HSETNX`, `HINCRBY`, `HINCRBYFLOAT`, `HGET`, `HDEL`, `HGETALL`, `HKEYS`, `HVALS`, `HLEN`, `HEXISTS`, `HMGET`.
 
 ```
 HSET user:1 name Rohit plan pro
 HSETNX user:1 visits 0  # set only if visits is missing
 HINCRBY user:1 visits 1 # increment an integer field
+HINCRBYFLOAT user:1 score 2.5
 HGET user:1 name        # "Rohit"
 HGETALL user:1
 ```
