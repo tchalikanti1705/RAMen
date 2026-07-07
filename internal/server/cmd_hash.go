@@ -1,6 +1,7 @@
 package server
 
 import (
+	"math"
 	"strconv"
 
 	"github.com/Rohit-Dnath/RAMen/internal/store"
@@ -46,6 +47,21 @@ func (c *conn) cmdHIncrBy(args []string) error {
 		return c.storeErr(err)
 	}
 	return c.writeInt(n)
+}
+
+func (c *conn) cmdHIncrByFloat(args []string) error {
+	if len(args) != 4 {
+		return c.wrongArgs("hincrbyfloat")
+	}
+	delta, err := strconv.ParseFloat(args[3], 64)
+	if err != nil || math.IsNaN(delta) || math.IsInf(delta, 0) {
+		return c.writeError(store.ErrNotFloat.Error())
+	}
+	v, err := c.s.store.HIncrByFloat(args[1], args[2], delta)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeBulk(v)
 }
 
 func (c *conn) cmdHGet(args []string) error {
