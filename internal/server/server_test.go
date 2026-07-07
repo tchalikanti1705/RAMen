@@ -53,6 +53,19 @@ func mustDo(t *testing.T, cli *client.Client, args ...string) any {
 	return r
 }
 
+func mustError(t *testing.T, cli *client.Client, args ...string) error {
+	t.Helper()
+	r, err := cli.Do(args...)
+	if err != nil {
+		t.Fatalf("%v: %v", args, err)
+	}
+	e, ok := r.(error)
+	if !ok {
+		t.Fatalf("%v: expected server error, got %v", args, r)
+	}
+	return e
+}
+
 func TestCoreCommands(t *testing.T) {
 	cli, cleanup := startTestServer(t)
 	defer cleanup()
@@ -96,6 +109,22 @@ func TestDataStructures(t *testing.T) {
 		t.Fatalf("HGET = %v", r)
 	}
 
+	if r := mustDo(t, cli, "HSETNX", "h", "f3", "v3"); r != int64(1) {
+		t.Fatalf("HSETNX new = %v", r)
+	}
+	if r := mustDo(t, cli, "HSETNX", "h", "f3", "v4"); r != int64(0) {
+		t.Fatalf("HSETNX existing = %v", r)
+	}
+	if r := mustDo(t, cli, "HGET", "h", "f3"); r != "v3" {
+		t.Fatalf("HSETNX overwrote existing field: %v", r)
+	}
+	if r := mustDo(t, cli, "HSETNX", "h", "", ""); r != int64(1) {
+		t.Fatalf("HSETNX empty field/value = %v", r)
+	}
+	if r := mustDo(t, cli, "HGET", "h", ""); r != "" {
+		t.Fatalf("HGET empty field = %v", r)
+	}
+
 	mustDo(t, cli, "SADD", "s", "x", "y", "x")
 	if r := mustDo(t, cli, "SCARD", "s"); r != int64(2) {
 		t.Fatalf("SCARD = %v", r)
@@ -106,6 +135,15 @@ func TestDataStructures(t *testing.T) {
 	if len(zr) != 2 || zr[0] != "one" || zr[1] != "two" {
 		t.Fatalf("ZRANGE = %v", zr)
 	}
+}
+
+func TestHashSetNXErrors(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustError(t, cli, "HSETNX", "h", "field")
+	mustDo(t, cli, "SET", "str", "value")
+	mustError(t, cli, "HSETNX", "str", "field", "value")
 }
 
 func TestVectorCommands(t *testing.T) {

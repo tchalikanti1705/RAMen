@@ -40,6 +40,35 @@ func TestIncrBy(t *testing.T) {
 	}
 }
 
+func TestHashSetNX(t *testing.T) {
+	s := New()
+	ok, err := s.HSetNX("h", "f", "v1")
+	if err != nil || !ok {
+		t.Fatalf("HSetNX create = %v %v", ok, err)
+	}
+	if v, found, err := s.HGet("h", "f"); err != nil || !found || v != "v1" {
+		t.Fatalf("HGet after HSetNX = %q %v %v", v, found, err)
+	}
+	ok, err = s.HSetNX("h", "f", "v2")
+	if err != nil || ok {
+		t.Fatalf("HSetNX existing = %v %v", ok, err)
+	}
+	if v, found, err := s.HGet("h", "f"); err != nil || !found || v != "v1" {
+		t.Fatalf("HSetNX overwrote existing field: %q %v %v", v, found, err)
+	}
+	ok, err = s.HSetNX("h", "", "")
+	if err != nil || !ok {
+		t.Fatalf("HSetNX empty field/value = %v %v", ok, err)
+	}
+	if v, found, err := s.HGet("h", ""); err != nil || !found || v != "" {
+		t.Fatalf("HGet empty field = %q %v %v", v, found, err)
+	}
+	s.Set("str", "value", SetOptions{})
+	if _, err := s.HSetNX("str", "f", "v"); err != ErrWrongType {
+		t.Fatalf("HSetNX wrong type = %v", err)
+	}
+}
+
 func TestWrongType(t *testing.T) {
 	s := New()
 	s.LPush("l", "a")

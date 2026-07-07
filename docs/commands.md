@@ -51,10 +51,11 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 
 ## Hashes
 
-`HSET`, `HGET`, `HDEL`, `HGETALL`, `HKEYS`, `HVALS`, `HLEN`, `HEXISTS`, `HMGET`.
+`HSET`, `HSETNX`, `HGET`, `HDEL`, `HGETALL`, `HKEYS`, `HVALS`, `HLEN`, `HEXISTS`, `HMGET`.
 
 ```
 HSET user:1 name Rohit plan pro
+HSETNX user:1 visits 0  # set only if visits is missing
 HGET user:1 name        # "Rohit"
 HGETALL user:1
 ```
