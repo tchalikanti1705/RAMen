@@ -57,6 +57,7 @@ func (s *Server) registerCommands() {
 		// hashes
 		"HSET":    (*conn).cmdHSet,
 		"HSETNX":  (*conn).cmdHSetNX,
+		"HINCRBY": (*conn).cmdHIncrBy,
 		"HGET":    (*conn).cmdHGet,
 		"HDEL":    (*conn).cmdHDel,
 		"HGETALL": (*conn).cmdHGetAll,

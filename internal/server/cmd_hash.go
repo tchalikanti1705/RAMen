@@ -1,5 +1,11 @@
 package server
 
+import (
+	"strconv"
+
+	"github.com/Rohit-Dnath/RAMen/internal/store"
+)
+
 func (c *conn) cmdHSet(args []string) error {
 	// HSET key field value [field value ...]
 	if len(args) < 4 || len(args)%2 != 0 {
@@ -25,6 +31,21 @@ func (c *conn) cmdHSetNX(args []string) error {
 		return c.storeErr(err)
 	}
 	return c.writeInt(boolToInt(ok))
+}
+
+func (c *conn) cmdHIncrBy(args []string) error {
+	if len(args) != 4 {
+		return c.wrongArgs("hincrby")
+	}
+	delta, err := strconv.ParseInt(args[3], 10, 64)
+	if err != nil {
+		return c.writeError(store.ErrNotInteger.Error())
+	}
+	n, err := c.s.store.HIncrBy(args[1], args[2], delta)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeInt(n)
 }
 
 func (c *conn) cmdHGet(args []string) error {
