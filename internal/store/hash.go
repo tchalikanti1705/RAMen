@@ -1,5 +1,10 @@
 package store
 
+import (
+	"math"
+	"strconv"
+)
+
 // asHash returns the hash value of e, or ErrWrongType.
 func asHash(e *entry) (map[string]string, error) {
 	h, ok := e.val.(map[string]string)
@@ -58,6 +63,38 @@ func (s *Store) HSetNX(key, field, value string) (bool, error) {
 	}
 	h[field] = value
 	return true, nil
+}
+
+// HIncrBy adds delta to an integer field, treating a missing key or field as 0.
+func (s *Store) HIncrBy(key, field string, delta int64) (int64, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	var h map[string]string
+	if found {
+		var err error
+		if h, err = asHash(e); err != nil {
+			return 0, err
+		}
+	} else {
+		h = make(map[string]string)
+		sh.m[key] = &entry{val: h}
+	}
+	var cur int64
+	if v, ok := h[field]; ok {
+		n, err := strconv.ParseInt(v, 10, 64)
+		if err != nil {
+			return 0, ErrNotInteger
+		}
+		cur = n
+	}
+	if (delta > 0 && cur > math.MaxInt64-delta) || (delta < 0 && cur < math.MinInt64-delta) {
+		return 0, ErrIntegerOverflow
+	}
+	cur += delta
+	h[field] = strconv.FormatInt(cur, 10)
+	return cur, nil
 }
 
 // HGet returns the value of a single field.

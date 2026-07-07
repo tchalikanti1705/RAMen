@@ -14,6 +14,9 @@ var ErrWrongType = errors.New("WRONGTYPE Operation against a key holding the wro
 // for INCR/DECR-style operations.
 var ErrNotInteger = errors.New("ERR value is not an integer or out of range")
 
+// ErrIntegerOverflow is returned when an increment would overflow int64.
+var ErrIntegerOverflow = errors.New("ERR increment or decrement would overflow")
+
 // asString returns the string value of e, or ErrWrongType.
 func asString(e *entry) (string, error) {
 	s, ok := e.val.(string)
