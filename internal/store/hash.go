@@ -36,6 +36,30 @@ func (s *Store) HSet(key string, pairs map[string]string) (int, error) {
 	return added, nil
 }
 
+// HSetNX sets field to value only when field does not already exist. It creates
+// the hash when key is absent and reports whether the write happened.
+func (s *Store) HSetNX(key, field, value string) (bool, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	var h map[string]string
+	if found {
+		var err error
+		if h, err = asHash(e); err != nil {
+			return false, err
+		}
+	} else {
+		h = make(map[string]string)
+		sh.m[key] = &entry{val: h}
+	}
+	if _, ok := h[field]; ok {
+		return false, nil
+	}
+	h[field] = value
+	return true, nil
+}
+
 // HGet returns the value of a single field.
 func (s *Store) HGet(key, field string) (string, bool, error) {
 	sh := s.shardFor(key)
