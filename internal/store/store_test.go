@@ -42,6 +42,64 @@ func TestIncrBy(t *testing.T) {
 	}
 }
 
+func TestIncrByFloat(t *testing.T) {
+	s := New()
+	v, err := s.IncrByFloat("c", 1.5)
+	if err != nil || v != "1.5" {
+		t.Fatalf("IncrByFloat create = %q %v", v, err)
+	}
+	v, err = s.IncrByFloat("c", 2.25)
+	if err != nil || v != "3.75" {
+		t.Fatalf("IncrByFloat existing = %q %v", v, err)
+	}
+	v, err = s.IncrByFloat("c", -3.75)
+	if err != nil || v != "0" {
+		t.Fatalf("IncrByFloat zero normalization = %q %v", v, err)
+	}
+	v, err = s.IncrByFloat("whole", 5)
+	if err != nil || v != "5" {
+		t.Fatalf("IncrByFloat integer-valued result = %q %v", v, err)
+	}
+	s.Set("neg", "-0", SetOptions{})
+	v, err = s.IncrByFloat("neg", math.Copysign(0, -1))
+	if err != nil || v != "0" {
+		t.Fatalf("IncrByFloat negative-zero normalization = %q %v", v, err)
+	}
+	s.Set("sci", "1e3", SetOptions{})
+	v, err = s.IncrByFloat("sci", 0.5)
+	if err != nil || v != "1000.5" {
+		t.Fatalf("IncrByFloat scientific value = %q %v", v, err)
+	}
+	s.Set("bad", "abc", SetOptions{})
+	if _, err := s.IncrByFloat("bad", 1); err != ErrNotFloat {
+		t.Fatalf("IncrByFloat non-float value = %v", err)
+	}
+	if got, _, _ := s.Get("bad"); got != "abc" {
+		t.Fatalf("IncrByFloat changed bad value = %q", got)
+	}
+	s.Set("nan", "NaN", SetOptions{})
+	if _, err := s.IncrByFloat("nan", 1); err != ErrNotFloat {
+		t.Fatalf("IncrByFloat NaN value = %v", err)
+	}
+	if _, err := s.IncrByFloat("d", math.Inf(1)); err != ErrNotFloat {
+		t.Fatalf("IncrByFloat infinite delta = %v", err)
+	}
+	if _, ok, _ := s.Get("d"); ok {
+		t.Fatalf("IncrByFloat wrote a key for an infinite delta")
+	}
+	s.Set("huge", "1e308", SetOptions{})
+	if _, err := s.IncrByFloat("huge", 1e308); err != ErrFloatOverflow {
+		t.Fatalf("IncrByFloat overflow = %v", err)
+	}
+	if got, _, _ := s.Get("huge"); got != "1e308" {
+		t.Fatalf("IncrByFloat changed overflow value = %q", got)
+	}
+	s.LPush("l", "a")
+	if _, err := s.IncrByFloat("l", 1.5); err != ErrWrongType {
+		t.Fatalf("IncrByFloat wrong type = %v", err)
+	}
+}
+
 func TestHashSetNX(t *testing.T) {
 	s := New()
 	ok, err := s.HSetNX("h", "f", "v1")

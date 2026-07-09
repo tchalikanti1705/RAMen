@@ -227,6 +227,54 @@ func TestHashIncrByFloatErrors(t *testing.T) {
 	mustError(t, cli, "HINCRBYFLOAT", "str", "field", "1.5")
 }
 
+func TestIncrByFloat(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "INCRBYFLOAT", "f", "1.5"); r != "1.5" {
+		t.Fatalf("INCRBYFLOAT create = %v", r)
+	}
+	if r := mustDo(t, cli, "INCRBYFLOAT", "f", "2.25"); r != "3.75" {
+		t.Fatalf("INCRBYFLOAT existing = %v", r)
+	}
+	if r := mustDo(t, cli, "INCRBYFLOAT", "f", "-3.75"); r != "0" {
+		t.Fatalf("INCRBYFLOAT zero normalization = %v", r)
+	}
+	if r := mustDo(t, cli, "INCRBYFLOAT", "whole", "5"); r != "5" {
+		t.Fatalf("INCRBYFLOAT integer-valued = %v", r)
+	}
+	mustDo(t, cli, "SET", "sci", "1e3")
+	if r := mustDo(t, cli, "INCRBYFLOAT", "sci", "0.5"); r != "1000.5" {
+		t.Fatalf("INCRBYFLOAT scientific value = %v", r)
+	}
+}
+
+func TestIncrByFloatErrors(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustError(t, cli, "INCRBYFLOAT", "f")
+	mustError(t, cli, "INCRBYFLOAT", "f", "not-a-float")
+	mustError(t, cli, "INCRBYFLOAT", "f", "NaN")
+	mustError(t, cli, "INCRBYFLOAT", "f", "+Inf")
+	mustError(t, cli, "INCRBYFLOAT", "f", "1e309")
+
+	mustDo(t, cli, "SET", "bad", "abc")
+	mustError(t, cli, "INCRBYFLOAT", "bad", "1")
+	if r := mustDo(t, cli, "GET", "bad"); r != "abc" {
+		t.Fatalf("INCRBYFLOAT changed bad value = %v", r)
+	}
+
+	mustDo(t, cli, "SET", "huge", "1e308")
+	mustError(t, cli, "INCRBYFLOAT", "huge", "1e308")
+	if r := mustDo(t, cli, "GET", "huge"); r != "1e308" {
+		t.Fatalf("INCRBYFLOAT changed overflow value = %v", r)
+	}
+
+	mustDo(t, cli, "RPUSH", "l", "a")
+	mustError(t, cli, "INCRBYFLOAT", "l", "1.5")
+}
+
 func TestVectorCommands(t *testing.T) {
 	cli, cleanup := startTestServer(t)
 	defer cleanup()
