@@ -27,7 +27,7 @@ func (s *Store) VSearch(key string, query []float32, k int) ([]vector.Result, er
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return nil, nil
 	}
@@ -63,7 +63,7 @@ func (s *Store) VCard(key string) (int, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return 0, nil
 	}
@@ -79,7 +79,7 @@ func (s *Store) VDim(key string) (int, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return 0, nil
 	}

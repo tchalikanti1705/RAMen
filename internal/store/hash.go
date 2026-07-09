@@ -142,7 +142,7 @@ func (s *Store) HGet(key, field string) (string, bool, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return "", false, nil
 	}
@@ -186,7 +186,7 @@ func (s *Store) HGetAll(key string) ([]string, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return nil, nil
 	}
@@ -207,7 +207,7 @@ func (s *Store) hashView(key string, fn func(map[string]string)) error {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		fn(nil)
 		return nil

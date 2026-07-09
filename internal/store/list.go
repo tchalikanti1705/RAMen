@@ -92,7 +92,7 @@ func (s *Store) LLen(key string) (int, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return 0, nil
 	}
@@ -108,7 +108,7 @@ func (s *Store) LIndex(key string, idx int) (string, bool, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return "", false, nil
 	}
@@ -132,7 +132,7 @@ func (s *Store) LRange(key string, start, stop int) ([]string, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return nil, nil
 	}

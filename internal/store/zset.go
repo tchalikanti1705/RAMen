@@ -81,7 +81,7 @@ func (s *Store) ZScore(key, member string) (float64, bool, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return 0, false, nil
 	}
@@ -98,7 +98,7 @@ func (s *Store) ZCard(key string) (int, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return 0, nil
 	}
@@ -131,7 +131,7 @@ func (s *Store) ZRange(key string, start, stop int) ([]ZMember, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return nil, nil
 	}
@@ -153,7 +153,7 @@ func (s *Store) ZRangeByScore(key string, min, max float64) ([]ZMember, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return nil, nil
 	}

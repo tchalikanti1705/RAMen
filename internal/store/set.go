@@ -67,7 +67,7 @@ func (s *Store) SMembers(key string) ([]string, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return nil, nil
 	}
@@ -87,7 +87,7 @@ func (s *Store) SIsMember(key, member string) (bool, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return false, nil
 	}
@@ -104,7 +104,7 @@ func (s *Store) SCard(key string) (int, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return 0, nil
 	}

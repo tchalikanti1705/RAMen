@@ -61,7 +61,9 @@ func (s *Store) shardFor(key string) *shard {
 }
 
 // getLive returns the live entry for key, deleting it first if it has expired
-// (lazy expiry). The caller must hold the shard write lock when del==true.
+// (lazy expiry). Because it mutates the shard map, the caller MUST hold the
+// shard write lock (sh.mu.Lock). Read paths holding only a read lock must use
+// peekLive instead.
 func (sh *shard) getLive(key string, now time.Time) (*entry, bool) {
 	e, ok := sh.m[key]
 	if !ok {
@@ -69,6 +71,18 @@ func (sh *shard) getLive(key string, now time.Time) (*entry, bool) {
 	}
 	if e.expired(now) {
 		delete(sh.m, key)
+		return nil, false
+	}
+	return e, true
+}
+
+// peekLive returns the live entry for key without mutating the shard map: an
+// expired entry is reported as absent but left in place for the background
+// sweeper (or a later write) to reclaim. It is safe to call while holding only
+// the shard read lock (sh.mu.RLock).
+func (sh *shard) peekLive(key string, now time.Time) (*entry, bool) {
+	e, ok := sh.m[key]
+	if !ok || e.expired(now) {
 		return nil, false
 	}
 	return e, true
@@ -166,7 +180,7 @@ func (s *Store) TTL(key string) (d time.Duration, hasTTL, ok bool) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
-	e, found := sh.getLive(key, s.now())
+	e, found := sh.peekLive(key, s.now())
 	if !found {
 		return 0, false, false
 	}
