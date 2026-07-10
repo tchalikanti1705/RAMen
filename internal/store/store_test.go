@@ -94,6 +94,18 @@ func TestIncrByFloat(t *testing.T) {
 	if got, _, _ := s.Get("huge"); got != "1e308" {
 		t.Fatalf("IncrByFloat changed overflow value = %q", got)
 	}
+	s.Set("inf", "inf", SetOptions{})
+	if _, err := s.IncrByFloat("inf", 1); err != ErrNotFloat {
+		t.Fatalf("IncrByFloat infinite stored value = %v", err)
+	}
+	s.Set("ttl", "1", SetOptions{})
+	s.Expire("ttl", time.Minute)
+	if _, err := s.IncrByFloat("ttl", 1.5); err != nil {
+		t.Fatalf("IncrByFloat on a key with TTL = %v", err)
+	}
+	if _, hasTTL, ok := s.TTL("ttl"); !ok || !hasTTL {
+		t.Fatalf("IncrByFloat dropped the key's TTL: ok=%v hasTTL=%v", ok, hasTTL)
+	}
 	s.LPush("l", "a")
 	if _, err := s.IncrByFloat("l", 1.5); err != ErrWrongType {
 		t.Fatalf("IncrByFloat wrong type = %v", err)

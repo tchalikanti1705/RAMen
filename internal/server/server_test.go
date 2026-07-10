@@ -254,6 +254,7 @@ func TestIncrByFloatErrors(t *testing.T) {
 	defer cleanup()
 
 	mustError(t, cli, "INCRBYFLOAT", "f")
+	mustError(t, cli, "INCRBYFLOAT", "f", "1", "2")
 	mustError(t, cli, "INCRBYFLOAT", "f", "not-a-float")
 	mustError(t, cli, "INCRBYFLOAT", "f", "NaN")
 	mustError(t, cli, "INCRBYFLOAT", "f", "+Inf")
@@ -264,6 +265,9 @@ func TestIncrByFloatErrors(t *testing.T) {
 	if r := mustDo(t, cli, "GET", "bad"); r != "abc" {
 		t.Fatalf("INCRBYFLOAT changed bad value = %v", r)
 	}
+
+	mustDo(t, cli, "SET", "infv", "inf")
+	mustError(t, cli, "INCRBYFLOAT", "infv", "1")
 
 	mustDo(t, cli, "SET", "huge", "1e308")
 	mustError(t, cli, "INCRBYFLOAT", "huge", "1e308")
