@@ -389,3 +389,28 @@ func TestSetRange(t *testing.T) {
 		t.Fatalf("PING after huge SETRANGE = %v, server may have crashed", r)
 	}
 }
+
+func TestSetNX(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "SETNX", "k", "v1"); r != int64(1) {
+		t.Fatalf("SETNX new key = %v", r)
+	}
+	if r := mustDo(t, cli, "GET", "k"); r != "v1" {
+		t.Fatalf("GET after SETNX = %v", r)
+	}
+	if r := mustDo(t, cli, "SETNX", "k", "v2"); r != int64(0) {
+		t.Fatalf("SETNX existing key = %v", r)
+	}
+	if r := mustDo(t, cli, "GET", "k"); r != "v1" {
+		t.Fatalf("SETNX overwrote an existing key = %v", r)
+	}
+	// a key of another type still blocks SETNX
+	mustDo(t, cli, "RPUSH", "l", "a")
+	if r := mustDo(t, cli, "SETNX", "l", "v"); r != int64(0) {
+		t.Fatalf("SETNX on an existing list = %v", r)
+	}
+	mustError(t, cli, "SETNX", "k")           // arity: too few
+	mustError(t, cli, "SETNX", "k", "v", "x") // arity: too many
+}

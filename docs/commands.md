@@ -38,6 +38,7 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 | Command | Description |
 |---|---|
 | `SET <key> <value> [EX s\|PX ms] [NX\|XX]` | Set a string with options. |
+| `SETNX <key> <value>` | Set only if the key does not exist; returns `1` or `0`. |
 | `GET <key>` | Get a string. |
 | `GETSET <key> <value>` | Set and return the old value. |
 | `APPEND <key> <value>` | Append; returns new length. |
