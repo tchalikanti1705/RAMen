@@ -29,17 +29,18 @@ func (s *Server) registerCommands() {
 		"BGSAVE":   (*conn).cmdSave,
 
 		// generic keyspace
-		"DEL":       (*conn).cmdDel,
-		"EXISTS":    (*conn).cmdExists,
-		"EXPIRE":    (*conn).cmdExpire,
-		"PEXPIRE":   (*conn).cmdPExpire,
-		"EXPIREAT":  (*conn).cmdExpireAt,
-		"PEXPIREAT": (*conn).cmdPExpireAt,
-		"TTL":       (*conn).cmdTTL,
-		"PTTL":      (*conn).cmdPTTL,
-		"PERSIST":   (*conn).cmdPersist,
-		"KEYS":      (*conn).cmdKeys,
-		"TYPE":      (*conn).cmdType,
+		"DEL":        (*conn).cmdDel,
+		"EXISTS":     (*conn).cmdExists,
+		"EXPIRE":     (*conn).cmdExpire,
+		"PEXPIRE":    (*conn).cmdPExpire,
+		"EXPIREAT":   (*conn).cmdExpireAt,
+		"PEXPIREAT":  (*conn).cmdPExpireAt,
+		"TTL":        (*conn).cmdTTL,
+		"PTTL":       (*conn).cmdPTTL,
+		"EXPIRETIME": (*conn).cmdExpireTime,
+		"PERSIST":    (*conn).cmdPersist,
+		"KEYS":       (*conn).cmdKeys,
+		"TYPE":       (*conn).cmdType,
 
 		// strings
 		"GET":      (*conn).cmdGet,
@@ -288,6 +289,20 @@ func (c *conn) ttl(args []string, unit time.Duration) error {
 		return c.writeInt(-1) // no associated expiry
 	}
 	return c.writeInt(int64(d / unit))
+}
+
+func (c *conn) cmdExpireTime(args []string) error {
+	if len(args) != 2 {
+		return c.wrongArgs("expiretime")
+	}
+	at, hasTTL, ok := c.s.store.ExpireTime(args[1])
+	if !ok {
+		return c.writeInt(-2) // key does not exist
+	}
+	if !hasTTL {
+		return c.writeInt(-1) // no associated expiry
+	}
+	return c.writeInt(at.Unix())
 }
 
 func (c *conn) cmdPersist(args []string) error {
