@@ -3,6 +3,7 @@ package store
 import (
 	"math"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -250,5 +251,50 @@ func TestListSet(t *testing.T) {
 	s.Set("str", "value", SetOptions{})
 	if err := s.LSet("str", 0, "x"); err != ErrWrongType {
 		t.Fatalf("LSet wrong type = %v", err)
+	}
+}
+
+func TestListRem(t *testing.T) {
+	s := New()
+	if n, err := s.LRem("nope", 0, "a"); err != nil || n != 0 {
+		t.Fatalf("LRem missing key = %d %v", n, err)
+	}
+
+	s.RPush("pos", "a", "b", "a", "c", "a")
+	if n, _ := s.LRem("pos", 2, "a"); n != 2 {
+		t.Fatalf("LRem count>0 removed = %d", n)
+	}
+	if got, _ := s.LRange("pos", 0, -1); strings.Join(got, ",") != "b,c,a" {
+		t.Fatalf("LRem count>0 result = %v", got)
+	}
+
+	s.RPush("neg", "a", "b", "a", "c", "a")
+	if n, _ := s.LRem("neg", -2, "a"); n != 2 {
+		t.Fatalf("LRem count<0 removed = %d", n)
+	}
+	if got, _ := s.LRange("neg", 0, -1); strings.Join(got, ",") != "a,b,c" {
+		t.Fatalf("LRem count<0 result = %v", got)
+	}
+
+	s.RPush("all", "a", "b", "a", "c", "a")
+	if n, _ := s.LRem("all", 0, "a"); n != 3 {
+		t.Fatalf("LRem count==0 removed = %d", n)
+	}
+	if got, _ := s.LRange("all", 0, -1); strings.Join(got, ",") != "b,c" {
+		t.Fatalf("LRem count==0 result = %v", got)
+	}
+	if n, _ := s.LRem("all", 0, "zzz"); n != 0 {
+		t.Fatalf("LRem no match = %d", n)
+	}
+
+	s.RPush("empty", "x", "x")
+	s.LRem("empty", 0, "x")
+	if s.Exists("empty") != 0 {
+		t.Fatalf("LRem did not drop the emptied key")
+	}
+
+	s.Set("str", "v", SetOptions{})
+	if _, err := s.LRem("str", 0, "x"); err != ErrWrongType {
+		t.Fatalf("LRem wrong type = %v", err)
 	}
 }

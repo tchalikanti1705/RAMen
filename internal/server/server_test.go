@@ -249,6 +249,27 @@ func TestListSet(t *testing.T) {
 	mustError(t, cli, "LSET", "str", "0", "x") // wrong type
 }
 
+func TestListRem(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "LREM", "nope", "0", "a"); r != int64(0) {
+		t.Fatalf("LREM missing key = %v", r)
+	}
+	mustDo(t, cli, "RPUSH", "l", "a", "b", "a", "c", "a")
+	if r := mustDo(t, cli, "LREM", "l", "2", "a"); r != int64(2) {
+		t.Fatalf("LREM count>0 = %v", r)
+	}
+	rr := mustDo(t, cli, "LRANGE", "l", "0", "-1").([]any)
+	if len(rr) != 3 || rr[0] != "b" || rr[1] != "c" || rr[2] != "a" {
+		t.Fatalf("LREM result = %v", rr)
+	}
+	mustError(t, cli, "LREM", "l", "notanint", "a") // bad count
+	mustError(t, cli, "LREM", "l")                  // arity
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "LREM", "str", "0", "x") // wrong type
+}
+
 func TestVectorCommands(t *testing.T) {
 	cli, cleanup := startTestServer(t)
 	defer cleanup()
