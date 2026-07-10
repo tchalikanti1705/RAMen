@@ -1,6 +1,7 @@
 package server
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -86,7 +87,9 @@ func (c *conn) setEx(args []string, name string, unit time.Duration) error {
 	if err != nil {
 		return c.writeError(store.ErrNotInteger.Error())
 	}
-	if n <= 0 {
+	// Reject a non-positive TTL, and one so large that n*unit would overflow
+	// time.Duration and wrap into the past (which would silently drop the key).
+	if n <= 0 || n > math.MaxInt64/int64(unit) {
 		return c.writeError("ERR invalid expire time in '" + name + "' command")
 	}
 	c.s.store.Set(args[1], args[3], store.SetOptions{TTL: time.Duration(n) * unit, HasEx: true})

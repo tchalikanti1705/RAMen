@@ -449,6 +449,12 @@ func TestSetEx(t *testing.T) {
 	mustError(t, cli, "PSETEX", "k", "0", "v")
 	// non-integer TTL
 	mustError(t, cli, "SETEX", "k", "abc", "v")
+	// a TTL so large it would overflow time.Duration is rejected, not silently dropped
+	mustError(t, cli, "SETEX", "ovf", "10000000000", "v")
+	if r, _ := cli.Do("GET", "ovf"); r != nil {
+		t.Fatalf("SETEX overflow created a key = %v", r)
+	}
+	mustError(t, cli, "PSETEX", "ovf", "10000000000000", "v")
 	// arity
 	mustError(t, cli, "SETEX", "k", "10")
 	mustError(t, cli, "PSETEX", "k", "10")
