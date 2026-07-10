@@ -341,3 +341,55 @@ func TestListTrim(t *testing.T) {
 		t.Fatalf("LTrim wrong type = %v", err)
 	}
 }
+
+func TestListInsert(t *testing.T) {
+	s := New()
+	if n, err := s.LInsert("nope", true, "a", "x"); err != nil || n != 0 {
+		t.Fatalf("LInsert missing key = %d %v", n, err)
+	}
+
+	s.RPush("l", "a", "b", "c")
+	if n, _ := s.LInsert("l", true, "b", "X"); n != 4 {
+		t.Fatalf("LInsert before length = %d", n)
+	}
+	if got, _ := s.LRange("l", 0, -1); strings.Join(got, ",") != "a,X,b,c" {
+		t.Fatalf("LInsert before result = %v", got)
+	}
+	if n, _ := s.LInsert("l", false, "b", "Y"); n != 5 {
+		t.Fatalf("LInsert after length = %d", n)
+	}
+	if got, _ := s.LRange("l", 0, -1); strings.Join(got, ",") != "a,X,b,Y,c" {
+		t.Fatalf("LInsert after result = %v", got)
+	}
+
+	if n, _ := s.LInsert("l", true, "a", "HEAD"); n != 6 {
+		t.Fatalf("LInsert before head length = %d", n)
+	}
+	if got, _ := s.LRange("l", 0, 0); got[0] != "HEAD" {
+		t.Fatalf("LInsert before head result = %v", got)
+	}
+	if n, _ := s.LInsert("l", false, "c", "TAIL"); n != 7 {
+		t.Fatalf("LInsert after tail length = %d", n)
+	}
+	if got, _ := s.LRange("l", -1, -1); got[0] != "TAIL" {
+		t.Fatalf("LInsert after tail result = %v", got)
+	}
+
+	if n, _ := s.LInsert("l", true, "zzz", "no"); n != -1 {
+		t.Fatalf("LInsert missing pivot = %d", n)
+	}
+	if n, _ := s.LLen("l"); n != 7 {
+		t.Fatalf("LInsert missing pivot changed length = %d", n)
+	}
+
+	s.RPush("dup", "a", "b", "a")
+	s.LInsert("dup", true, "a", "Z")
+	if got, _ := s.LRange("dup", 0, -1); strings.Join(got, ",") != "Z,a,b,a" {
+		t.Fatalf("LInsert first-occurrence only = %v", got)
+	}
+
+	s.Set("str", "v", SetOptions{})
+	if _, err := s.LInsert("str", true, "a", "x"); err != ErrWrongType {
+		t.Fatalf("LInsert wrong type = %v", err)
+	}
+}

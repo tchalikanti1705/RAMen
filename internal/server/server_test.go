@@ -291,6 +291,33 @@ func TestListTrim(t *testing.T) {
 	mustError(t, cli, "LTRIM", "str", "0", "-1") // wrong type
 }
 
+func TestListInsert(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "LINSERT", "nope", "BEFORE", "a", "x"); r != int64(0) {
+		t.Fatalf("LINSERT missing key = %v", r)
+	}
+	mustDo(t, cli, "RPUSH", "l", "a", "b", "c")
+	if r := mustDo(t, cli, "LINSERT", "l", "BEFORE", "b", "X"); r != int64(4) {
+		t.Fatalf("LINSERT before = %v", r)
+	}
+	if r := mustDo(t, cli, "LINSERT", "l", "after", "b", "Y"); r != int64(5) { // case-insensitive
+		t.Fatalf("LINSERT after = %v", r)
+	}
+	rr := mustDo(t, cli, "LRANGE", "l", "0", "-1").([]any)
+	if len(rr) != 5 || rr[1] != "X" || rr[3] != "Y" {
+		t.Fatalf("LINSERT result = %v", rr)
+	}
+	if r := mustDo(t, cli, "LINSERT", "l", "BEFORE", "zzz", "no"); r != int64(-1) {
+		t.Fatalf("LINSERT missing pivot = %v", r)
+	}
+	mustError(t, cli, "LINSERT", "l", "SIDEWAYS", "b", "x") // bad where -> syntax error
+	mustError(t, cli, "LINSERT", "l", "BEFORE", "b")        // arity
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "LINSERT", "str", "BEFORE", "a", "x") // wrong type
+}
+
 func TestVectorCommands(t *testing.T) {
 	cli, cleanup := startTestServer(t)
 	defer cleanup()
