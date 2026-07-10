@@ -293,6 +293,15 @@ func TestListRem(t *testing.T) {
 		t.Fatalf("LRem did not drop the emptied key")
 	}
 
+	// int64-min count: -count overflows, must still remove all matches like Redis
+	s.RPush("min", "a", "b", "a")
+	if n, _ := s.LRem("min", math.MinInt64, "a"); n != 2 {
+		t.Fatalf("LRem int64-min count removed = %d", n)
+	}
+	if got, _ := s.LRange("min", 0, -1); strings.Join(got, ",") != "b" {
+		t.Fatalf("LRem int64-min count result = %v", got)
+	}
+
 	s.Set("str", "v", SetOptions{})
 	if _, err := s.LRem("str", 0, "x"); err != ErrWrongType {
 		t.Fatalf("LRem wrong type = %v", err)

@@ -264,6 +264,10 @@ func TestListRem(t *testing.T) {
 	if len(rr) != 3 || rr[0] != "b" || rr[1] != "c" || rr[2] != "a" {
 		t.Fatalf("LREM result = %v", rr)
 	}
+	mustDo(t, cli, "RPUSH", "m", "a", "b", "a")
+	if r := mustDo(t, cli, "LREM", "m", "-9223372036854775808", "a"); r != int64(2) {
+		t.Fatalf("LREM int64-min count = %v", r) // -count overflows, must still remove all
+	}
 	mustError(t, cli, "LREM", "l", "notanint", "a") // bad count
 	mustError(t, cli, "LREM", "l")                  // arity
 	mustDo(t, cli, "SET", "str", "v")

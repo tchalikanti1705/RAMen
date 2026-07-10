@@ -179,6 +179,11 @@ func (s *Store) LRem(key string, count int, value string) (int, error) {
 	if count < 0 {
 		// walk from the tail, dropping up to -count matches
 		limit := -count
+		if limit < 0 {
+			// -count overflows when count is the int64 minimum; Redis treats
+			// that as "remove every match", so cap it at the list length.
+			limit = len(l.items)
+		}
 		remove := make([]bool, len(l.items))
 		for i := len(l.items) - 1; i >= 0; i-- {
 			if l.items[i] == value && removed < limit {
