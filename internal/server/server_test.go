@@ -414,3 +414,42 @@ func TestSetNX(t *testing.T) {
 	mustError(t, cli, "SETNX", "k")           // arity: too few
 	mustError(t, cli, "SETNX", "k", "v", "x") // arity: too many
 }
+
+func TestSetEx(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "SETEX", "k", "100", "v"); r != "OK" {
+		t.Fatalf("SETEX = %v", r)
+	}
+	if r := mustDo(t, cli, "GET", "k"); r != "v" {
+		t.Fatalf("GET after SETEX = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "k").(int64); r < 1 || r > 100 {
+		t.Fatalf("TTL after SETEX = %v, want 1..100", r)
+	}
+
+	if r := mustDo(t, cli, "PSETEX", "pk", "100000", "v"); r != "OK" {
+		t.Fatalf("PSETEX = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "pk").(int64); r < 1 || r > 100 {
+		t.Fatalf("TTL after PSETEX = %v, want 1..100", r)
+	}
+
+	// SETEX overwrites the value and resets the TTL
+	mustDo(t, cli, "SET", "o", "old")
+	mustDo(t, cli, "SETEX", "o", "50", "new")
+	if r := mustDo(t, cli, "GET", "o"); r != "new" {
+		t.Fatalf("SETEX did not overwrite = %v", r)
+	}
+
+	// a non-positive TTL is rejected
+	mustError(t, cli, "SETEX", "k", "0", "v")
+	mustError(t, cli, "SETEX", "k", "-1", "v")
+	mustError(t, cli, "PSETEX", "k", "0", "v")
+	// non-integer TTL
+	mustError(t, cli, "SETEX", "k", "abc", "v")
+	// arity
+	mustError(t, cli, "SETEX", "k", "10")
+	mustError(t, cli, "PSETEX", "k", "10")
+}

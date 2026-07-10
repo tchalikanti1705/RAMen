@@ -39,6 +39,8 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 |---|---|
 | `SET <key> <value> [EX s\|PX ms] [NX\|XX]` | Set a string with options. |
 | `SETNX <key> <value>` | Set only if the key does not exist; returns `1` or `0`. |
+| `SETEX <key> <seconds> <value>` | Set with a TTL in seconds; rejects a non-positive TTL. |
+| `PSETEX <key> <ms> <value>` | Set with a TTL in milliseconds; rejects a non-positive TTL. |
 | `GET <key>` | Get a string. |
 | `GETSET <key> <value>` | Set and return the old value. |
 | `APPEND <key> <value>` | Append; returns new length. |
