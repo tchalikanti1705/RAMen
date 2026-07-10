@@ -73,6 +73,26 @@ func (c *conn) cmdSetNX(args []string) error {
 	return c.writeInt(boolToInt(ok))
 }
 
+func (c *conn) cmdSetEx(args []string) error  { return c.setEx(args, "setex", time.Second) }
+func (c *conn) cmdPSetEx(args []string) error { return c.setEx(args, "psetex", time.Millisecond) }
+
+// setEx implements SETEX/PSETEX: an atomic set with a positive TTL, in seconds
+// or milliseconds depending on unit. Redis rejects a non-positive TTL.
+func (c *conn) setEx(args []string, name string, unit time.Duration) error {
+	if len(args) != 4 {
+		return c.wrongArgs(name)
+	}
+	n, err := strconv.ParseInt(args[2], 10, 64)
+	if err != nil {
+		return c.writeError(store.ErrNotInteger.Error())
+	}
+	if n <= 0 {
+		return c.writeError("ERR invalid expire time in '" + name + "' command")
+	}
+	c.s.store.Set(args[1], args[3], store.SetOptions{TTL: time.Duration(n) * unit, HasEx: true})
+	return c.writeSimple("OK")
+}
+
 func (c *conn) cmdGetSet(args []string) error {
 	if len(args) != 3 {
 		return c.wrongArgs("getset")
