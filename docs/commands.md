@@ -27,6 +27,8 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 | `EXISTS <key> [key ...]` | Count of keys that exist. |
 | `EXPIRE <key> <seconds>` | Set a TTL in seconds. |
 | `PEXPIRE <key> <ms>` | Set a TTL in milliseconds. |
+| `EXPIREAT <key> <unix-seconds>` | Expire at an absolute Unix time (seconds); a past time deletes the key. |
+| `PEXPIREAT <key> <unix-ms>` | Expire at an absolute Unix time (milliseconds). |
 | `TTL <key>` | Seconds left (`-1` no TTL, `-2` missing). |
 | `PTTL <key>` | Milliseconds left. |
 | `PERSIST <key>` | Remove the TTL. |

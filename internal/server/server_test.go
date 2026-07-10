@@ -389,3 +389,40 @@ func TestSetRange(t *testing.T) {
 		t.Fatalf("PING after huge SETRANGE = %v, server may have crashed", r)
 	}
 }
+
+func TestExpireAt(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "EXPIREAT", "nope", "99999999999"); r != int64(0) {
+		t.Fatalf("EXPIREAT missing key = %v", r)
+	}
+
+	mustDo(t, cli, "SET", "k", "v")
+	if r := mustDo(t, cli, "EXPIREAT", "k", "99999999999"); r != int64(1) {
+		t.Fatalf("EXPIREAT = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "k").(int64); r <= 0 {
+		t.Fatalf("TTL after EXPIREAT = %v, want a positive TTL", r)
+	}
+
+	mustDo(t, cli, "SET", "past", "v")
+	if r := mustDo(t, cli, "EXPIREAT", "past", "1"); r != int64(1) {
+		t.Fatalf("EXPIREAT past = %v", r)
+	}
+	if r := mustDo(t, cli, "EXISTS", "past"); r != int64(0) {
+		t.Fatalf("EXPIREAT with a past time did not delete the key = %v", r)
+	}
+
+	mustDo(t, cli, "SET", "pk", "v")
+	if r := mustDo(t, cli, "PEXPIREAT", "pk", "99999999999000"); r != int64(1) {
+		t.Fatalf("PEXPIREAT = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "pk").(int64); r <= 0 {
+		t.Fatalf("TTL after PEXPIREAT = %v, want a positive TTL", r)
+	}
+
+	mustError(t, cli, "EXPIREAT", "k")             // arity
+	mustError(t, cli, "EXPIREAT", "k", "notanint") // bad timestamp
+	mustError(t, cli, "PEXPIREAT", "pk", "notanint")
+}
