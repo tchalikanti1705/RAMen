@@ -46,6 +46,7 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 | `SETRANGE <key> <offset> <value>` | Overwrite from `offset`, zero-padding past the end; returns new length. |
 | `INCR <key>` / `DECR <key>` | ±1 on an integer string. |
 | `INCRBY <key> <n>` / `DECRBY <key> <n>` | ±n. |
+| `INCRBYFLOAT <key> <n>` | Add float `n` to a float string; returns the new value. |
 | `MGET <key> [key ...]` | Multiple gets. |
 | `MSET <key> <val> [key val ...]` | Multiple sets. |
 

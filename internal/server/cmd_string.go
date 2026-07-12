@@ -1,6 +1,7 @@
 package server
 
 import (
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -118,6 +119,21 @@ func (c *conn) incrByN(args []string, name string, sign int64) error {
 		return c.storeErr(err)
 	}
 	return c.writeInt(n)
+}
+
+func (c *conn) cmdIncrByFloat(args []string) error {
+	if len(args) != 3 {
+		return c.wrongArgs("incrbyfloat")
+	}
+	delta, err := strconv.ParseFloat(args[2], 64)
+	if err != nil || math.IsNaN(delta) || math.IsInf(delta, 0) {
+		return c.writeError(store.ErrNotFloat.Error())
+	}
+	v, err := c.s.store.IncrByFloat(args[1], delta)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeBulk(v)
 }
 
 func (c *conn) cmdMGet(args []string) error {

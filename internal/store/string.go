@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"math"
 	"strconv"
 	"time"
 )
@@ -144,6 +145,45 @@ func (s *Store) IncrBy(key string, delta int64) (int64, error) {
 		sh.m[key] = &entry{val: strconv.FormatInt(cur, 10)}
 	}
 	return cur, nil
+}
+
+// IncrByFloat adds delta to the float string at key (treating a missing key as
+// 0) and returns the new value formatted the way Redis does.
+func (s *Store) IncrByFloat(key string, delta float64) (string, error) {
+	if math.IsNaN(delta) || math.IsInf(delta, 0) {
+		return "", ErrNotFloat
+	}
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	var cur float64
+	if found {
+		str, err := asString(e)
+		if err != nil {
+			return "", err
+		}
+		n, err := strconv.ParseFloat(str, 64)
+		if err != nil || math.IsNaN(n) || math.IsInf(n, 0) {
+			return "", ErrNotFloat
+		}
+		cur = n
+	}
+	cur += delta
+	if math.IsNaN(cur) || math.IsInf(cur, 0) {
+		return "", ErrFloatOverflow
+	}
+	// normalize negative zero so we return "0", not "-0", like Redis
+	if cur == 0 {
+		cur = 0
+	}
+	out := strconv.FormatFloat(cur, 'f', -1, 64)
+	if found {
+		e.val = out
+	} else {
+		sh.m[key] = &entry{val: out}
+	}
+	return out, nil
 }
 
 // GetRange returns the substring between start and end (inclusive), with Redis-style
