@@ -299,6 +299,13 @@ Thanks to these wonderful people who help make RAMen better.
         <img src="https://img.shields.io/badge/Contributor-495057?style=for-the-badge&labelColor=495057" alt="Contributor">
       </a>
     </td>
+    <td align="center">
+      <a href="https://github.com/gaoharimran29-glitch">
+        <img src="https://avatars.githubusercontent.com/u/225884102?v=4" width="80" height="80" style="border-radius:50%" alt="gaoharimran29-glitch"><br>
+        <sub><b>gaoharimran29-glitch</b></sub><br>
+        <img src="https://img.shields.io/badge/Contributor-495057?style=for-the-badge&labelColor=495057" alt="Contributor">
+      </a>
+    </td>
   </tr>
 </table>
 
