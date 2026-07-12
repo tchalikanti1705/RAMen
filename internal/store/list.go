@@ -1,5 +1,13 @@
 package store
 
+import "errors"
+
+// ErrNoSuchKey mirrors Redis' "no such key", returned by LSET on a missing key.
+var ErrNoSuchKey = errors.New("ERR no such key")
+
+// ErrIndexOutOfRange mirrors Redis' LSET error for an index outside the list.
+var ErrIndexOutOfRange = errors.New("ERR index out of range")
+
 // list is RAMen's list type. A slice is sufficient for V1's basic ops; the
 // PRD scopes lists to LPUSH/RPUSH/LRANGE/etc. only.
 type list struct {
@@ -124,6 +132,144 @@ func (s *Store) LIndex(key string, idx int) (string, bool, error) {
 		return "", false, nil
 	}
 	return l.items[i], true, nil
+}
+
+// LSet overwrites the element at index (negative counts from the tail) with
+// value. It errors if the key is missing or the index is out of range.
+func (s *Store) LSet(key string, idx int, value string) error {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return ErrNoSuchKey
+	}
+	l, err := asList(e)
+	if err != nil {
+		return err
+	}
+	i := idx
+	if i < 0 {
+		i += len(l.items)
+	}
+	if i < 0 || i >= len(l.items) {
+		return ErrIndexOutOfRange
+	}
+	l.items[i] = value
+	return nil
+}
+
+// LRem removes elements equal to value: count>0 walks head->tail, count<0 walks
+// tail->head, count==0 removes every match. It returns how many were removed and
+// drops the key when the list becomes empty.
+func (s *Store) LRem(key string, count int, value string) (int, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return 0, nil
+	}
+	l, err := asList(e)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	out := make([]string, 0, len(l.items))
+	if count < 0 {
+		// walk from the tail, dropping up to -count matches
+		limit := -count
+		if limit < 0 {
+			// -count overflows when count is the int64 minimum; Redis treats
+			// that as "remove every match", so cap it at the list length.
+			limit = len(l.items)
+		}
+		remove := make([]bool, len(l.items))
+		for i := len(l.items) - 1; i >= 0; i-- {
+			if l.items[i] == value && removed < limit {
+				remove[i] = true
+				removed++
+			}
+		}
+		for i, v := range l.items {
+			if !remove[i] {
+				out = append(out, v)
+			}
+		}
+	} else {
+		// walk from the head; count==0 means no limit
+		for _, v := range l.items {
+			if v == value && (count == 0 || removed < count) {
+				removed++
+				continue
+			}
+			out = append(out, v)
+		}
+	}
+	if len(out) == 0 {
+		delete(sh.m, key)
+	} else {
+		l.items = out
+	}
+	return removed, nil
+}
+
+// LTrim keeps only the elements in the inclusive range [start, stop], with
+// Redis-style negative indices, and drops the key when the range is empty.
+func (s *Store) LTrim(key string, start, stop int) error {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return nil
+	}
+	l, err := asList(e)
+	if err != nil {
+		return err
+	}
+	start, stop = normalizeRange(start, stop, len(l.items))
+	if start > stop {
+		delete(sh.m, key)
+		return nil
+	}
+	kept := make([]string, stop-start+1)
+	copy(kept, l.items[start:stop+1])
+	l.items = kept
+	return nil
+}
+
+// LInsert inserts value before or after the first element equal to pivot. It
+// returns the new length, 0 when the key is missing, or -1 when pivot is absent.
+func (s *Store) LInsert(key string, before bool, pivot, value string) (int, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return 0, nil
+	}
+	l, err := asList(e)
+	if err != nil {
+		return 0, err
+	}
+	pos := -1
+	for i, v := range l.items {
+		if v == pivot {
+			pos = i
+			break
+		}
+	}
+	if pos < 0 {
+		return -1, nil
+	}
+	if !before {
+		pos++
+	}
+	l.items = append(l.items, "")
+	copy(l.items[pos+1:], l.items[pos:])
+	l.items[pos] = value
+	return len(l.items), nil
 }
 
 // LRange returns the elements in the inclusive index range [start, stop],

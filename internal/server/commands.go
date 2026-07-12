@@ -70,13 +70,17 @@ func (s *Server) registerCommands() {
 		"HMGET":        (*conn).cmdHMGet,
 
 		// lists
-		"LPUSH":  (*conn).cmdLPush,
-		"RPUSH":  (*conn).cmdRPush,
-		"LPOP":   (*conn).cmdLPop,
-		"RPOP":   (*conn).cmdRPop,
-		"LLEN":   (*conn).cmdLLen,
-		"LINDEX": (*conn).cmdLIndex,
-		"LRANGE": (*conn).cmdLRange,
+		"LPUSH":   (*conn).cmdLPush,
+		"RPUSH":   (*conn).cmdRPush,
+		"LPOP":    (*conn).cmdLPop,
+		"RPOP":    (*conn).cmdRPop,
+		"LLEN":    (*conn).cmdLLen,
+		"LINDEX":  (*conn).cmdLIndex,
+		"LRANGE":  (*conn).cmdLRange,
+		"LSET":    (*conn).cmdLSet,
+		"LREM":    (*conn).cmdLRem,
+		"LTRIM":   (*conn).cmdLTrim,
+		"LINSERT": (*conn).cmdLInsert,
 
 		// sets
 		"SADD":      (*conn).cmdSAdd,

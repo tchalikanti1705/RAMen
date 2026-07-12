@@ -3,6 +3,7 @@ package store
 import (
 	"math"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -290,5 +291,184 @@ func TestSnapshotRoundtrip(t *testing.T) {
 	}
 	if n, _ := s2.VCard("vec"); n != 1 {
 		t.Fatalf("vcard = %d", n)
+	}
+}
+
+func TestListSet(t *testing.T) {
+	s := New()
+	if err := s.LSet("l", 0, "x"); err != ErrNoSuchKey {
+		t.Fatalf("LSet missing key = %v", err)
+	}
+	s.RPush("l", "a", "b", "c")
+	if err := s.LSet("l", 1, "B"); err != nil {
+		t.Fatalf("LSet = %v", err)
+	}
+	if v, _, _ := s.LIndex("l", 1); v != "B" {
+		t.Fatalf("LSet did not update index 1 = %q", v)
+	}
+	if err := s.LSet("l", -1, "C"); err != nil {
+		t.Fatalf("LSet negative index = %v", err)
+	}
+	if v, _, _ := s.LIndex("l", 2); v != "C" {
+		t.Fatalf("LSet negative index did not update tail = %q", v)
+	}
+	if err := s.LSet("l", 3, "z"); err != ErrIndexOutOfRange {
+		t.Fatalf("LSet out of range = %v", err)
+	}
+	if err := s.LSet("l", -4, "z"); err != ErrIndexOutOfRange {
+		t.Fatalf("LSet negative out of range = %v", err)
+	}
+	s.Set("str", "value", SetOptions{})
+	if err := s.LSet("str", 0, "x"); err != ErrWrongType {
+		t.Fatalf("LSet wrong type = %v", err)
+	}
+}
+
+func TestListRem(t *testing.T) {
+	s := New()
+	if n, err := s.LRem("nope", 0, "a"); err != nil || n != 0 {
+		t.Fatalf("LRem missing key = %d %v", n, err)
+	}
+
+	s.RPush("pos", "a", "b", "a", "c", "a")
+	if n, _ := s.LRem("pos", 2, "a"); n != 2 {
+		t.Fatalf("LRem count>0 removed = %d", n)
+	}
+	if got, _ := s.LRange("pos", 0, -1); strings.Join(got, ",") != "b,c,a" {
+		t.Fatalf("LRem count>0 result = %v", got)
+	}
+
+	s.RPush("neg", "a", "b", "a", "c", "a")
+	if n, _ := s.LRem("neg", -2, "a"); n != 2 {
+		t.Fatalf("LRem count<0 removed = %d", n)
+	}
+	if got, _ := s.LRange("neg", 0, -1); strings.Join(got, ",") != "a,b,c" {
+		t.Fatalf("LRem count<0 result = %v", got)
+	}
+
+	s.RPush("all", "a", "b", "a", "c", "a")
+	if n, _ := s.LRem("all", 0, "a"); n != 3 {
+		t.Fatalf("LRem count==0 removed = %d", n)
+	}
+	if got, _ := s.LRange("all", 0, -1); strings.Join(got, ",") != "b,c" {
+		t.Fatalf("LRem count==0 result = %v", got)
+	}
+	if n, _ := s.LRem("all", 0, "zzz"); n != 0 {
+		t.Fatalf("LRem no match = %d", n)
+	}
+
+	s.RPush("empty", "x", "x")
+	s.LRem("empty", 0, "x")
+	if s.Exists("empty") != 0 {
+		t.Fatalf("LRem did not drop the emptied key")
+	}
+
+	// int64-min count: -count overflows, must still remove all matches like Redis
+	s.RPush("min", "a", "b", "a")
+	if n, _ := s.LRem("min", math.MinInt64, "a"); n != 2 {
+		t.Fatalf("LRem int64-min count removed = %d", n)
+	}
+	if got, _ := s.LRange("min", 0, -1); strings.Join(got, ",") != "b" {
+		t.Fatalf("LRem int64-min count result = %v", got)
+	}
+
+	s.Set("str", "v", SetOptions{})
+	if _, err := s.LRem("str", 0, "x"); err != ErrWrongType {
+		t.Fatalf("LRem wrong type = %v", err)
+	}
+}
+
+func TestListTrim(t *testing.T) {
+	s := New()
+	if err := s.LTrim("nope", 0, -1); err != nil {
+		t.Fatalf("LTrim missing key = %v", err)
+	}
+
+	s.RPush("l", "a", "b", "c", "d", "e")
+	if err := s.LTrim("l", 1, 3); err != nil {
+		t.Fatalf("LTrim = %v", err)
+	}
+	if got, _ := s.LRange("l", 0, -1); strings.Join(got, ",") != "b,c,d" {
+		t.Fatalf("LTrim result = %v", got)
+	}
+
+	s.RPush("neg", "a", "b", "c", "d", "e")
+	s.LTrim("neg", -3, -1)
+	if got, _ := s.LRange("neg", 0, -1); strings.Join(got, ",") != "c,d,e" {
+		t.Fatalf("LTrim negative indices = %v", got)
+	}
+
+	s.RPush("clamp", "a", "b", "c")
+	s.LTrim("clamp", -100, 100)
+	if got, _ := s.LRange("clamp", 0, -1); strings.Join(got, ",") != "a,b,c" {
+		t.Fatalf("LTrim clamp = %v", got)
+	}
+
+	s.RPush("past", "a", "b", "c")
+	s.LTrim("past", 5, 10)
+	if s.Exists("past") != 0 {
+		t.Fatalf("LTrim start past the end did not drop the key")
+	}
+	s.RPush("rev", "a", "b", "c")
+	s.LTrim("rev", 2, 1)
+	if s.Exists("rev") != 0 {
+		t.Fatalf("LTrim start>stop did not drop the key")
+	}
+
+	s.Set("str", "v", SetOptions{})
+	if err := s.LTrim("str", 0, -1); err != ErrWrongType {
+		t.Fatalf("LTrim wrong type = %v", err)
+	}
+}
+
+func TestListInsert(t *testing.T) {
+	s := New()
+	if n, err := s.LInsert("nope", true, "a", "x"); err != nil || n != 0 {
+		t.Fatalf("LInsert missing key = %d %v", n, err)
+	}
+
+	s.RPush("l", "a", "b", "c")
+	if n, _ := s.LInsert("l", true, "b", "X"); n != 4 {
+		t.Fatalf("LInsert before length = %d", n)
+	}
+	if got, _ := s.LRange("l", 0, -1); strings.Join(got, ",") != "a,X,b,c" {
+		t.Fatalf("LInsert before result = %v", got)
+	}
+	if n, _ := s.LInsert("l", false, "b", "Y"); n != 5 {
+		t.Fatalf("LInsert after length = %d", n)
+	}
+	if got, _ := s.LRange("l", 0, -1); strings.Join(got, ",") != "a,X,b,Y,c" {
+		t.Fatalf("LInsert after result = %v", got)
+	}
+
+	if n, _ := s.LInsert("l", true, "a", "HEAD"); n != 6 {
+		t.Fatalf("LInsert before head length = %d", n)
+	}
+	if got, _ := s.LRange("l", 0, 0); got[0] != "HEAD" {
+		t.Fatalf("LInsert before head result = %v", got)
+	}
+	if n, _ := s.LInsert("l", false, "c", "TAIL"); n != 7 {
+		t.Fatalf("LInsert after tail length = %d", n)
+	}
+	if got, _ := s.LRange("l", -1, -1); got[0] != "TAIL" {
+		t.Fatalf("LInsert after tail result = %v", got)
+	}
+
+	if n, _ := s.LInsert("l", true, "zzz", "no"); n != -1 {
+		t.Fatalf("LInsert missing pivot = %d", n)
+	}
+	if n, _ := s.LLen("l"); n != 7 {
+		t.Fatalf("LInsert missing pivot changed length = %d", n)
+	}
+
+	s.RPush("dup", "a", "b", "a")
+	s.LInsert("dup", true, "a", "Z")
+	if got, _ := s.LRange("dup", 0, -1); strings.Join(got, ",") != "Z,a,b,a" {
+		t.Fatalf("LInsert first-occurrence only = %v", got)
+	}
+
+	s.Set("str", "v", SetOptions{})
+	if _, err := s.LInsert("str", true, "a", "x"); err != ErrWrongType {
+		t.Fatalf("LInsert wrong type = %v", err)
 	}
 }

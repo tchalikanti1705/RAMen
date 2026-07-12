@@ -279,6 +279,101 @@ func TestIncrByFloatErrors(t *testing.T) {
 	mustError(t, cli, "INCRBYFLOAT", "l", "1.5")
 }
 
+func TestListSet(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustError(t, cli, "LSET", "l", "0", "x") // no such key
+	mustDo(t, cli, "RPUSH", "l", "a", "b", "c")
+	if r := mustDo(t, cli, "LSET", "l", "1", "B"); r != "OK" {
+		t.Fatalf("LSET = %v", r)
+	}
+	if r := mustDo(t, cli, "LINDEX", "l", "1"); r != "B" {
+		t.Fatalf("LSET did not update = %v", r)
+	}
+	if r := mustDo(t, cli, "LSET", "l", "-1", "C"); r != "OK" {
+		t.Fatalf("LSET negative index = %v", r)
+	}
+	mustError(t, cli, "LSET", "l", "3", "z")        // index out of range
+	mustError(t, cli, "LSET", "l", "notanint", "z") // bad index
+	mustError(t, cli, "LSET", "l")                  // arity
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "LSET", "str", "0", "x") // wrong type
+}
+
+func TestListRem(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "LREM", "nope", "0", "a"); r != int64(0) {
+		t.Fatalf("LREM missing key = %v", r)
+	}
+	mustDo(t, cli, "RPUSH", "l", "a", "b", "a", "c", "a")
+	if r := mustDo(t, cli, "LREM", "l", "2", "a"); r != int64(2) {
+		t.Fatalf("LREM count>0 = %v", r)
+	}
+	rr := mustDo(t, cli, "LRANGE", "l", "0", "-1").([]any)
+	if len(rr) != 3 || rr[0] != "b" || rr[1] != "c" || rr[2] != "a" {
+		t.Fatalf("LREM result = %v", rr)
+	}
+	mustDo(t, cli, "RPUSH", "m", "a", "b", "a")
+	if r := mustDo(t, cli, "LREM", "m", "-9223372036854775808", "a"); r != int64(2) {
+		t.Fatalf("LREM int64-min count = %v", r) // -count overflows, must still remove all
+	}
+	mustError(t, cli, "LREM", "l", "notanint", "a") // bad count
+	mustError(t, cli, "LREM", "l")                  // arity
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "LREM", "str", "0", "x") // wrong type
+}
+
+func TestListTrim(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "LTRIM", "nope", "0", "-1"); r != "OK" {
+		t.Fatalf("LTRIM missing key = %v", r)
+	}
+	mustDo(t, cli, "RPUSH", "l", "a", "b", "c", "d", "e")
+	if r := mustDo(t, cli, "LTRIM", "l", "1", "3"); r != "OK" {
+		t.Fatalf("LTRIM = %v", r)
+	}
+	rr := mustDo(t, cli, "LRANGE", "l", "0", "-1").([]any)
+	if len(rr) != 3 || rr[0] != "b" || rr[2] != "d" {
+		t.Fatalf("LTRIM result = %v", rr)
+	}
+	mustError(t, cli, "LTRIM", "l", "x", "3") // bad index
+	mustError(t, cli, "LTRIM", "l", "1")      // arity
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "LTRIM", "str", "0", "-1") // wrong type
+}
+
+func TestListInsert(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "LINSERT", "nope", "BEFORE", "a", "x"); r != int64(0) {
+		t.Fatalf("LINSERT missing key = %v", r)
+	}
+	mustDo(t, cli, "RPUSH", "l", "a", "b", "c")
+	if r := mustDo(t, cli, "LINSERT", "l", "BEFORE", "b", "X"); r != int64(4) {
+		t.Fatalf("LINSERT before = %v", r)
+	}
+	if r := mustDo(t, cli, "LINSERT", "l", "after", "b", "Y"); r != int64(5) { // case-insensitive
+		t.Fatalf("LINSERT after = %v", r)
+	}
+	rr := mustDo(t, cli, "LRANGE", "l", "0", "-1").([]any)
+	if len(rr) != 5 || rr[1] != "X" || rr[3] != "Y" {
+		t.Fatalf("LINSERT result = %v", rr)
+	}
+	if r := mustDo(t, cli, "LINSERT", "l", "BEFORE", "zzz", "no"); r != int64(-1) {
+		t.Fatalf("LINSERT missing pivot = %v", r)
+	}
+	mustError(t, cli, "LINSERT", "l", "SIDEWAYS", "b", "x") // bad where -> syntax error
+	mustError(t, cli, "LINSERT", "l", "BEFORE", "b")        // arity
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "LINSERT", "str", "BEFORE", "a", "x") // wrong type
+}
+
 func TestVectorCommands(t *testing.T) {
 	cli, cleanup := startTestServer(t)
 	defer cleanup()
