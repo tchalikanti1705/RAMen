@@ -5,15 +5,21 @@ services:
       args:
         VERSION: docker
 
+    # 6379: RESP server (drop-in for REDIS_URL). 8080: web dashboard.
     ports:
       - "6379:6379"
       - "8080:8080"
 
+    # The image already defaults to this path; set it here too so the
+    # persistence contract is visible without reading the Dockerfile.
     environment:
       RAMEN_SNAPSHOT_PATH: /data/ramen.snapshot
 
+    # Snapshots outlive `docker compose down`.
     volumes:
       - ramen-data:/data
+
+    restart: unless-stopped
 
 volumes:
   ramen-data:
