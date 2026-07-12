@@ -3,6 +3,8 @@ package server
 import (
 	"strconv"
 	"strings"
+
+	"github.com/Rohit-Dnath/RAMen/internal/store"
 )
 
 func (c *conn) cmdLPush(args []string) error { return c.push(args, "lpush", true) }
@@ -70,7 +72,7 @@ func (c *conn) cmdLIndex(args []string) error {
 	}
 	idx, err := strconv.Atoi(args[2])
 	if err != nil {
-		return c.writeError("ERR value is not an integer or out of range")
+		return c.writeError(store.ErrNotInteger.Error())
 	}
 	v, ok, err := c.s.store.LIndex(args[1], idx)
 	if err != nil {
@@ -89,7 +91,7 @@ func (c *conn) cmdLRange(args []string) error {
 	start, err1 := strconv.Atoi(args[2])
 	stop, err2 := strconv.Atoi(args[3])
 	if err1 != nil || err2 != nil {
-		return c.writeError("ERR value is not an integer or out of range")
+		return c.writeError(store.ErrNotInteger.Error())
 	}
 	items, err := c.s.store.LRange(args[1], start, stop)
 	if err != nil {
@@ -104,7 +106,7 @@ func (c *conn) cmdLSet(args []string) error {
 	}
 	idx, err := strconv.Atoi(args[2])
 	if err != nil {
-		return c.writeError("ERR value is not an integer or out of range")
+		return c.writeError(store.ErrNotInteger.Error())
 	}
 	if err := c.s.store.LSet(args[1], idx, args[3]); err != nil {
 		return c.storeErr(err)
@@ -118,7 +120,7 @@ func (c *conn) cmdLRem(args []string) error {
 	}
 	count, err := strconv.Atoi(args[2])
 	if err != nil {
-		return c.writeError("ERR value is not an integer or out of range")
+		return c.writeError(store.ErrNotInteger.Error())
 	}
 	n, err := c.s.store.LRem(args[1], count, args[3])
 	if err != nil {
@@ -134,7 +136,7 @@ func (c *conn) cmdLTrim(args []string) error {
 	start, err1 := strconv.Atoi(args[2])
 	stop, err2 := strconv.Atoi(args[3])
 	if err1 != nil || err2 != nil {
-		return c.writeError("ERR value is not an integer or out of range")
+		return c.writeError(store.ErrNotInteger.Error())
 	}
 	if err := c.s.store.LTrim(args[1], start, stop); err != nil {
 		return c.storeErr(err)
