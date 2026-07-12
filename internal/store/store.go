@@ -161,6 +161,25 @@ func (s *Store) Expire(key string, ttl time.Duration) bool {
 	return true
 }
 
+// ExpireAt sets an absolute expiry deadline on an existing key. A deadline that
+// is already in the past deletes the key right away, matching Redis. It reports
+// whether the key existed.
+func (s *Store) ExpireAt(key string, at time.Time) bool {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, ok := sh.getLive(key, s.now())
+	if !ok {
+		return false
+	}
+	if !at.After(s.now()) {
+		delete(sh.m, key)
+		return true
+	}
+	e.expireAt = at
+	return true
+}
+
 // Persist removes any TTL from key, returning whether a TTL was removed.
 func (s *Store) Persist(key string) bool {
 	sh := s.shardFor(key)
@@ -188,6 +207,22 @@ func (s *Store) TTL(key string) (d time.Duration, hasTTL, ok bool) {
 		return 0, false, true
 	}
 	return time.Until(e.expireAt), true, true
+}
+
+// ExpireTime returns the absolute expiry deadline for key. ok is false when the
+// key does not exist; hasTTL is false when the key exists but is persistent.
+func (s *Store) ExpireTime(key string) (at time.Time, hasTTL, ok bool) {
+	sh := s.shardFor(key)
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	e, found := sh.peekLive(key, s.now())
+	if !found {
+		return time.Time{}, false, false
+	}
+	if e.expireAt.IsZero() {
+		return time.Time{}, false, true
+	}
+	return e.expireAt, true, true
 }
 
 // Keys returns every live key matching the glob-style pattern.

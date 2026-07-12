@@ -536,3 +536,75 @@ func TestSetRange(t *testing.T) {
 		t.Fatalf("PING after huge SETRANGE = %v, server may have crashed", r)
 	}
 }
+
+func TestExpireAt(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "EXPIREAT", "nope", "99999999999"); r != int64(0) {
+		t.Fatalf("EXPIREAT missing key = %v", r)
+	}
+
+	mustDo(t, cli, "SET", "k", "v")
+	if r := mustDo(t, cli, "EXPIREAT", "k", "99999999999"); r != int64(1) {
+		t.Fatalf("EXPIREAT = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "k").(int64); r <= 0 {
+		t.Fatalf("TTL after EXPIREAT = %v, want a positive TTL", r)
+	}
+
+	mustDo(t, cli, "SET", "past", "v")
+	if r := mustDo(t, cli, "EXPIREAT", "past", "1"); r != int64(1) {
+		t.Fatalf("EXPIREAT past = %v", r)
+	}
+	if r := mustDo(t, cli, "EXISTS", "past"); r != int64(0) {
+		t.Fatalf("EXPIREAT with a past time did not delete the key = %v", r)
+	}
+
+	mustDo(t, cli, "SET", "pk", "v")
+	if r := mustDo(t, cli, "PEXPIREAT", "pk", "99999999999000"); r != int64(1) {
+		t.Fatalf("PEXPIREAT = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "pk").(int64); r <= 0 {
+		t.Fatalf("TTL after PEXPIREAT = %v, want a positive TTL", r)
+	}
+
+	mustError(t, cli, "EXPIREAT", "k")             // arity
+	mustError(t, cli, "EXPIREAT", "k", "notanint") // bad timestamp
+	mustError(t, cli, "PEXPIREAT", "pk", "notanint")
+
+	// a timestamp so large it would overflow time.Unix must be rejected, not
+	// silently delete the key
+	mustDo(t, cli, "SET", "keep", "v")
+	mustError(t, cli, "EXPIREAT", "keep", "9223372036854775807")
+	if r := mustDo(t, cli, "EXISTS", "keep"); r != int64(1) {
+		t.Fatalf("EXPIREAT overflow deleted the key = %v", r)
+	}
+}
+
+func TestExpireTime(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "EXPIRETIME", "nope"); r != int64(-2) {
+		t.Fatalf("EXPIRETIME missing key = %v", r)
+	}
+
+	mustDo(t, cli, "SET", "k", "v")
+	if r := mustDo(t, cli, "EXPIRETIME", "k"); r != int64(-1) {
+		t.Fatalf("EXPIRETIME without a TTL = %v", r)
+	}
+	mustDo(t, cli, "EXPIREAT", "k", "99999999999")
+	if r := mustDo(t, cli, "EXPIRETIME", "k"); r != int64(99999999999) {
+		t.Fatalf("EXPIRETIME after EXPIREAT = %v", r)
+	}
+
+	mustDo(t, cli, "SET", "pk", "v")
+	mustDo(t, cli, "PEXPIREAT", "pk", "99999999999000")
+	if r := mustDo(t, cli, "EXPIRETIME", "pk"); r != int64(99999999999) {
+		t.Fatalf("EXPIRETIME after PEXPIREAT (ms -> seconds) = %v", r)
+	}
+
+	mustError(t, cli, "EXPIRETIME")           // arity: no key
+	mustError(t, cli, "EXPIRETIME", "k", "x") // arity: too many
+}

@@ -261,6 +261,56 @@ func TestExpiryLazy(t *testing.T) {
 	}
 }
 
+func TestExpireAt(t *testing.T) {
+	s := New()
+	cur := time.Unix(1000, 0)
+	s.now = func() time.Time { return cur }
+
+	if s.ExpireAt("nope", time.Unix(2000, 0)) {
+		t.Fatal("ExpireAt on a missing key should be false")
+	}
+
+	s.Set("k", "v", SetOptions{})
+	if !s.ExpireAt("k", time.Unix(2000, 0)) {
+		t.Fatal("ExpireAt with a future deadline should be true")
+	}
+	if _, ok, _ := s.Get("k"); !ok {
+		t.Fatal("key should still be alive before its deadline")
+	}
+	cur = time.Unix(2001, 0)
+	if _, ok, _ := s.Get("k"); ok {
+		t.Fatal("key should be gone once the deadline passes")
+	}
+
+	s.Set("past", "v", SetOptions{})
+	if !s.ExpireAt("past", time.Unix(500, 0)) {
+		t.Fatal("ExpireAt with a past deadline should still return true")
+	}
+	if s.Exists("past") != 0 {
+		t.Fatal("ExpireAt with a past deadline should delete the key")
+	}
+}
+
+func TestExpireTime(t *testing.T) {
+	s := New()
+	cur := time.Unix(1000, 0)
+	s.now = func() time.Time { return cur }
+
+	if _, _, ok := s.ExpireTime("nope"); ok {
+		t.Fatal("ExpireTime on a missing key should be ok=false")
+	}
+
+	s.Set("k", "v", SetOptions{})
+	if _, hasTTL, ok := s.ExpireTime("k"); !ok || hasTTL {
+		t.Fatalf("ExpireTime without a TTL = hasTTL=%v ok=%v", hasTTL, ok)
+	}
+
+	s.ExpireAt("k", time.Unix(5000, 0))
+	if at, hasTTL, ok := s.ExpireTime("k"); !ok || !hasTTL || at.Unix() != 5000 {
+		t.Fatalf("ExpireTime = %d hasTTL=%v ok=%v", at.Unix(), hasTTL, ok)
+	}
+}
+
 func TestSnapshotRoundtrip(t *testing.T) {
 	s := New()
 	s.Set("str", "hello", SetOptions{})

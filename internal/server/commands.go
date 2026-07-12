@@ -29,15 +29,18 @@ func (s *Server) registerCommands() {
 		"BGSAVE":   (*conn).cmdSave,
 
 		// generic keyspace
-		"DEL":     (*conn).cmdDel,
-		"EXISTS":  (*conn).cmdExists,
-		"EXPIRE":  (*conn).cmdExpire,
-		"PEXPIRE": (*conn).cmdPExpire,
-		"TTL":     (*conn).cmdTTL,
-		"PTTL":    (*conn).cmdPTTL,
-		"PERSIST": (*conn).cmdPersist,
-		"KEYS":    (*conn).cmdKeys,
-		"TYPE":    (*conn).cmdType,
+		"DEL":        (*conn).cmdDel,
+		"EXISTS":     (*conn).cmdExists,
+		"EXPIRE":     (*conn).cmdExpire,
+		"PEXPIRE":    (*conn).cmdPExpire,
+		"EXPIREAT":   (*conn).cmdExpireAt,
+		"PEXPIREAT":  (*conn).cmdPExpireAt,
+		"TTL":        (*conn).cmdTTL,
+		"PTTL":       (*conn).cmdPTTL,
+		"EXPIRETIME": (*conn).cmdExpireTime,
+		"PERSIST":    (*conn).cmdPersist,
+		"KEYS":       (*conn).cmdKeys,
+		"TYPE":       (*conn).cmdType,
 
 		// strings
 		"GET":         (*conn).cmdGet,
@@ -255,6 +258,37 @@ func (c *conn) cmdPExpire(args []string) error {
 	return c.writeInt(boolToInt(ok))
 }
 
+func (c *conn) cmdExpireAt(args []string) error  { return c.expireAt(args, "expireat", false) }
+func (c *conn) cmdPExpireAt(args []string) error { return c.expireAt(args, "pexpireat", true) }
+
+// maxExpireSeconds mirrors Redis' LLONG_MAX/1000 cap on an absolute second
+// timestamp. A larger value would overflow time.Unix and wrap into the past,
+// which would silently delete the key instead of setting a deadline.
+const maxExpireSeconds = 9223372036854775
+
+// expireAt sets an absolute deadline from a Unix timestamp given in seconds, or
+// milliseconds when ms is true.
+func (c *conn) expireAt(args []string, name string, ms bool) error {
+	if len(args) != 3 {
+		return c.wrongArgs(name)
+	}
+	ts, err := strconv.ParseInt(args[2], 10, 64)
+	if err != nil {
+		return c.writeError(store.ErrNotInteger.Error())
+	}
+	var at time.Time
+	if ms {
+		at = time.UnixMilli(ts)
+	} else {
+		if ts > maxExpireSeconds || ts < -maxExpireSeconds {
+			return c.writeError("ERR invalid expire time in '" + name + "' command")
+		}
+		at = time.Unix(ts, 0)
+	}
+	ok := c.s.store.ExpireAt(args[1], at)
+	return c.writeInt(boolToInt(ok))
+}
+
 func (c *conn) cmdTTL(args []string) error  { return c.ttl(args, time.Second) }
 func (c *conn) cmdPTTL(args []string) error { return c.ttl(args, time.Millisecond) }
 
@@ -270,6 +304,20 @@ func (c *conn) ttl(args []string, unit time.Duration) error {
 		return c.writeInt(-1) // no associated expiry
 	}
 	return c.writeInt(int64(d / unit))
+}
+
+func (c *conn) cmdExpireTime(args []string) error {
+	if len(args) != 2 {
+		return c.wrongArgs("expiretime")
+	}
+	at, hasTTL, ok := c.s.store.ExpireTime(args[1])
+	if !ok {
+		return c.writeInt(-2) // key does not exist
+	}
+	if !hasTTL {
+		return c.writeInt(-1) // no associated expiry
+	}
+	return c.writeInt(at.Unix())
 }
 
 func (c *conn) cmdPersist(args []string) error {
