@@ -1,5 +1,18 @@
 package store
 
+import (
+	"errors"
+	"math/rand"
+)
+
+// ErrSampleCount mirrors Redis' out-of-range error, returned when SRANDMEMBER's
+// with-repetition count is too large to serve safely.
+var ErrSampleCount = errors.New("ERR value is out of range")
+
+// maxSampleReps caps how many members SRANDMEMBER returns for a negative
+// (with-repetition) count, guarding against an unbounded allocation.
+const maxSampleReps = 1 << 20
+
 func asSet(e *entry) (map[string]struct{}, error) {
 	st, ok := e.val.(map[string]struct{})
 	if !ok {
@@ -220,4 +233,83 @@ func (s *Store) SDiff(keys []string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// sampleMembers picks members per Redis SPOP/SRANDMEMBER count rules: count >= 0
+// yields that many DISTINCT members (at most all of them); count < 0 yields
+// exactly -count members WITH repetition. members may be reordered in place.
+func sampleMembers(members []string, count int64) []string {
+	n := len(members)
+	if n == 0 || count == 0 {
+		return []string{}
+	}
+	if count > 0 {
+		if count >= int64(n) {
+			return append([]string(nil), members...)
+		}
+		rand.Shuffle(n, func(i, j int) { members[i], members[j] = members[j], members[i] })
+		return append([]string(nil), members[:count]...)
+	}
+	// count < 0: with repetition. The caller bounds the magnitude, so -count is
+	// safe to convert and cannot overflow.
+	reps := int(-count)
+	out := make([]string, reps)
+	for i := range out {
+		out[i] = members[rand.Intn(n)]
+	}
+	return out
+}
+
+// SPop removes and returns up to count random distinct members. The key is
+// deleted once emptied. count must be >= 0 (the caller rejects negatives).
+func (s *Store) SPop(key string, count int64) ([]string, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return nil, nil
+	}
+	set, err := asSet(e)
+	if err != nil {
+		return nil, err
+	}
+	members := make([]string, 0, len(set))
+	for m := range set {
+		members = append(members, m)
+	}
+	picked := sampleMembers(members, count)
+	for _, m := range picked {
+		delete(set, m)
+	}
+	if len(set) == 0 {
+		delete(sh.m, key)
+	}
+	return picked, nil
+}
+
+// SRandMember returns up to count random members without modifying the set:
+// count >= 0 yields distinct members (at most the set size); count < 0 yields
+// exactly -count members with repetition. It returns ErrSampleCount when a
+// negative count's magnitude exceeds the safe limit.
+func (s *Store) SRandMember(key string, count int64) ([]string, error) {
+	if count < -maxSampleReps {
+		return nil, ErrSampleCount
+	}
+	sh := s.shardFor(key)
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	e, found := sh.peekLive(key, s.now())
+	if !found {
+		return nil, nil
+	}
+	set, err := asSet(e)
+	if err != nil {
+		return nil, err
+	}
+	members := make([]string, 0, len(set))
+	for m := range set {
+		members = append(members, m)
+	}
+	return sampleMembers(members, count), nil
 }
