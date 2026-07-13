@@ -46,10 +46,18 @@ func TestMetricsEndpoint(t *testing.T) {
 	if _, err := cli.Do("SET", "k", "v"); err != nil {
 		t.Fatalf("SET: %v", err)
 	}
+	// give the cache ratio a fractional value so the assertion below can pin the
+	// %g float formatting (a regression to %f would print 0.666667, not the full
+	// value), and so the cache counters leave zero too
+	srv.Stats().CacheHits.Add(2)
+	srv.Stats().CacheMisses.Add(1)
 
 	d := New(srv, ":0") // build the dashboard without starting its HTTP server
 	rec := httptest.NewRecorder()
-	d.handleMetrics(rec, httptest.NewRequest("GET", "/metrics", nil))
+	// route through the dashboard mux (not handleMetrics directly) so the test
+	// also exercises the /metrics registration and that the "/" catch-all does
+	// not shadow it
+	d.http.Handler.ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
 	res := rec.Result()
 
 	if ct := res.Header.Get("Content-Type"); ct != "text/plain; version=0.0.4; charset=utf-8" {
@@ -92,6 +100,19 @@ func TestMetricsEndpoint(t *testing.T) {
 	}
 	if got := sampleValue(t, text, "ramen_connections_total"); got < 1 {
 		t.Errorf("ramen_connections_total = %d, want >= 1", got)
+	}
+	if got := sampleValue(t, text, "ramen_cache_hits_total"); got != 2 {
+		t.Errorf("ramen_cache_hits_total = %d, want 2", got)
+	}
+	if got := sampleValue(t, text, "ramen_cache_misses_total"); got != 1 {
+		t.Errorf("ramen_cache_misses_total = %d, want 1", got)
+	}
+
+	// the ratio must be %g-formatted (full precision), never %f: 2/3 must render
+	// as the full float, not a truncated 0.666667
+	wantRatio := strconv.FormatFloat(2.0/3.0, 'g', -1, 64)
+	if !strings.Contains(text, "ramen_cache_hit_ratio "+wantRatio+"\n") {
+		t.Errorf("ramen_cache_hit_ratio not %%g-formatted; want line %q in body:\n%s", "ramen_cache_hit_ratio "+wantRatio, text)
 	}
 }
 
