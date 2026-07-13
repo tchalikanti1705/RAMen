@@ -803,12 +803,23 @@ func TestZRevRange(t *testing.T) {
 	if got := strings.Join(zmemberNames(r), ","); got != "c,b" {
 		t.Fatalf("ZRevRange 0 1 = %q, want c,b", got)
 	}
-	// start past the end -> empty; missing key -> empty
+	// start past the end -> empty; start > stop -> empty; missing key -> empty
 	if r, _ := s.ZRevRange("z", 5, 10); len(r) != 0 {
 		t.Fatalf("ZRevRange out-of-range = %v", r)
 	}
+	if r, _ := s.ZRevRange("z", 2, 1); len(r) != 0 {
+		t.Fatalf("ZRevRange start>stop = %v", r)
+	}
 	if r, _ := s.ZRevRange("nokey", 0, -1); len(r) != 0 {
 		t.Fatalf("ZRevRange missing = %v", r)
+	}
+
+	// equal scores break ties by REVERSE lexicographic order (Redis): ascending
+	// order is m,x,y, so descending must be y,x,m — not just the scores flipped.
+	s.ZAdd("t", []ZMember{{"x", 5}, {"y", 5}, {"m", 5}})
+	r, _ = s.ZRevRange("t", 0, -1)
+	if got := strings.Join(zmemberNames(r), ","); got != "y,x,m" {
+		t.Fatalf("ZRevRange tie order = %q, want y,x,m", got)
 	}
 
 	// WRONGTYPE
