@@ -110,6 +110,20 @@ func (c *conn) cmdGetSet(args []string) error {
 	return c.writeBulk(old)
 }
 
+func (c *conn) cmdGetDel(args []string) error {
+	if len(args) != 2 {
+		return c.wrongArgs("getdel")
+	}
+	v, ok, err := c.s.store.GetDel(args[1])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	if !ok {
+		return c.writeNull()
+	}
+	return c.writeBulk(v)
+}
+
 func (c *conn) cmdAppend(args []string) error {
 	if len(args) != 3 {
 		return c.wrongArgs("append")
