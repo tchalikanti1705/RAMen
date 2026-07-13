@@ -847,3 +847,78 @@ func TestMSetNX(t *testing.T) {
 	mustError(t, cli, "MSETNX", "k", "v", "k2") // dangling key
 	mustError(t, cli, "MSETNX")                 // nothing
 }
+
+func TestRename(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// a missing source is an error
+	mustError(t, cli, "RENAME", "nope", "dst")
+
+	// basic rename returns OK and moves the value
+	mustDo(t, cli, "SET", "a", "1")
+	if r := mustDo(t, cli, "RENAME", "a", "b"); r != "OK" {
+		t.Fatalf("RENAME = %v", r)
+	}
+	if r := mustDo(t, cli, "GET", "b"); r != "1" {
+		t.Fatalf("GET b after RENAME = %v", r)
+	}
+	if r := mustDo(t, cli, "EXISTS", "a"); r != int64(0) {
+		t.Fatalf("source still exists after RENAME = %v", r)
+	}
+
+	// the TTL travels with the key
+	mustDo(t, cli, "SET", "t", "v")
+	mustDo(t, cli, "EXPIRE", "t", "100")
+	mustDo(t, cli, "RENAME", "t", "t2")
+	if r := mustDo(t, cli, "TTL", "t2").(int64); r <= 0 {
+		t.Fatalf("TTL after RENAME = %v, want a positive TTL", r)
+	}
+
+	// renaming over an existing key overwrites it
+	mustDo(t, cli, "SET", "s1", "new")
+	mustDo(t, cli, "SET", "d1", "old")
+	mustDo(t, cli, "RENAME", "s1", "d1")
+	if r := mustDo(t, cli, "GET", "d1"); r != "new" {
+		t.Fatalf("RENAME overwrite = %v", r)
+	}
+
+	// rename to itself succeeds
+	mustDo(t, cli, "SET", "self", "v")
+	if r := mustDo(t, cli, "RENAME", "self", "self"); r != "OK" {
+		t.Fatalf("RENAME self = %v", r)
+	}
+
+	mustError(t, cli, "RENAME", "a")           // arity: missing newkey
+	mustError(t, cli, "RENAME")                // arity: nothing
+	mustError(t, cli, "RENAME", "a", "b", "c") // arity: too many
+}
+
+func TestRenameNX(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustError(t, cli, "RENAMENX", "nope", "dst") // missing source
+
+	// destination free: renames and reports 1
+	mustDo(t, cli, "SET", "a", "1")
+	if r := mustDo(t, cli, "RENAMENX", "a", "b"); r != int64(1) {
+		t.Fatalf("RENAMENX to free dst = %v, want 1", r)
+	}
+	if r := mustDo(t, cli, "GET", "b"); r != "1" {
+		t.Fatalf("GET b after RENAMENX = %v", r)
+	}
+
+	// destination exists: reports 0 and nothing moves
+	mustDo(t, cli, "SET", "x", "xv")
+	mustDo(t, cli, "SET", "y", "yv")
+	if r := mustDo(t, cli, "RENAMENX", "x", "y"); r != int64(0) {
+		t.Fatalf("RENAMENX to existing dst = %v, want 0", r)
+	}
+	if r := mustDo(t, cli, "GET", "x"); r != "xv" {
+		t.Fatalf("src changed after a failed RENAMENX = %v", r)
+	}
+
+	mustError(t, cli, "RENAMENX", "x")           // arity
+	mustError(t, cli, "RENAMENX", "x", "y", "z") // arity
+}
