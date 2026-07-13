@@ -124,6 +124,65 @@ func (c *conn) cmdGetDel(args []string) error {
 	return c.writeBulk(v)
 }
 
+// cmdGetEx implements GETEX key [EX s | PX ms | EXAT ts | PXAT ts | PERSIST].
+// With no option it behaves like GET, leaving the TTL untouched.
+func (c *conn) cmdGetEx(args []string) error {
+	if len(args) < 2 {
+		return c.wrongArgs("getex")
+	}
+	op := store.GetExOp{Mode: store.GetExNoChange}
+	if len(args) > 2 {
+		switch opt := strings.ToUpper(args[2]); opt {
+		case "PERSIST":
+			if len(args) != 3 {
+				return c.writeError("ERR syntax error")
+			}
+			op.Mode = store.GetExPersist
+		case "EX", "PX", "EXAT", "PXAT":
+			if len(args) != 4 {
+				return c.writeError("ERR syntax error")
+			}
+			n, err := strconv.ParseInt(args[3], 10, 64)
+			if err != nil {
+				return c.writeError(store.ErrNotInteger.Error())
+			}
+			switch opt {
+			case "EX", "PX":
+				unit := time.Second
+				if opt == "PX" {
+					unit = time.Millisecond
+				}
+				// reject a non-positive TTL, and one so large it would overflow
+				// time.Duration and wrap into the past
+				if n <= 0 || n > math.MaxInt64/int64(unit) {
+					return c.writeError("ERR invalid expire time in 'getex' command")
+				}
+				op.Mode = store.GetExSetTTL
+				op.TTL = time.Duration(n) * unit
+			case "EXAT":
+				if n > maxExpireSeconds || n < -maxExpireSeconds {
+					return c.writeError("ERR invalid expire time in 'getex' command")
+				}
+				op.Mode = store.GetExSetAt
+				op.At = time.Unix(n, 0)
+			case "PXAT":
+				op.Mode = store.GetExSetAt
+				op.At = time.UnixMilli(n)
+			}
+		default:
+			return c.writeError("ERR syntax error")
+		}
+	}
+	v, ok, err := c.s.store.GetEx(args[1], op)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	if !ok {
+		return c.writeNull()
+	}
+	return c.writeBulk(v)
+}
+
 func (c *conn) cmdAppend(args []string) error {
 	if len(args) != 3 {
 		return c.wrongArgs("append")
