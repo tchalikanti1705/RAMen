@@ -148,6 +148,49 @@ func (s *Store) ZCard(key string) (int, error) {
 	return len(z.scores), nil
 }
 
+// zrankOf returns the ascending 0-based rank of member and the set size, or
+// found=false when the key or member is missing.
+func (s *Store) zrankOf(key, member string) (rank, size int, found bool, err error) {
+	sh := s.shardFor(key)
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	e, ok := sh.peekLive(key, s.now())
+	if !ok {
+		return 0, 0, false, nil
+	}
+	z, err := asZSet(e)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	if _, ok := z.scores[member]; !ok {
+		return 0, 0, false, nil
+	}
+	sorted := z.sortedMembers()
+	for i, m := range sorted {
+		if m.Member == member {
+			return i, len(sorted), true, nil
+		}
+	}
+	return 0, 0, false, nil
+}
+
+// ZRank returns the ascending 0-based rank of member; found is false when the
+// key or member is missing.
+func (s *Store) ZRank(key, member string) (int, bool, error) {
+	rank, _, found, err := s.zrankOf(key, member)
+	return rank, found, err
+}
+
+// ZRevRank returns the descending 0-based rank of member; found is false when
+// the key or member is missing.
+func (s *Store) ZRevRank(key, member string) (int, bool, error) {
+	rank, size, found, err := s.zrankOf(key, member)
+	if !found {
+		return 0, false, err
+	}
+	return size - 1 - rank, true, nil
+}
+
 // sortedMembers returns all members ordered by score ascending, ties broken
 // lexicographically (Redis ordering).
 func (z *zset) sortedMembers() []ZMember {
