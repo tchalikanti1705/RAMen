@@ -7,6 +7,7 @@ package store
 
 import (
 	"hash/fnv"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -323,6 +324,29 @@ func (s *Store) DBSize() int {
 		sh.mu.RUnlock()
 	}
 	return n
+}
+
+// RandomKey returns a randomly chosen live key, or ok=false when the keyspace
+// is empty. It starts at a random shard and scans forward, returning a key from
+// the first shard that holds one; Go's randomised map iteration makes the pick
+// within that shard random too. Expired keys are skipped but left in place for
+// the sweeper, so only a read lock is taken (never getLive, which deletes and
+// would race concurrent readers).
+func (s *Store) RandomKey() (string, bool) {
+	now := s.now()
+	start := rand.Intn(shardCount)
+	for i := 0; i < shardCount; i++ {
+		sh := s.shards[(start+i)%shardCount]
+		sh.mu.RLock()
+		for k, e := range sh.m {
+			if !e.expired(now) {
+				sh.mu.RUnlock()
+				return k, true
+			}
+		}
+		sh.mu.RUnlock()
+	}
+	return "", false
 }
 
 // Flush removes every key.
