@@ -549,3 +549,61 @@ func TestGetDel(t *testing.T) {
 		t.Fatal("GetDel deleted a WRONGTYPE key")
 	}
 }
+
+func TestGetEx(t *testing.T) {
+	s := New()
+	cur := time.Unix(1000, 0)
+	s.now = func() time.Time { return cur }
+
+	if _, ok, err := s.GetEx("nope", GetExOp{}); ok || err != nil {
+		t.Fatalf("GetEx missing = ok=%v err=%v", ok, err)
+	}
+
+	// no change leaves an existing TTL untouched
+	s.Set("k", "v", SetOptions{})
+	s.Expire("k", 100*time.Second) // deadline at 1100
+	if v, ok, err := s.GetEx("k", GetExOp{Mode: GetExNoChange}); err != nil || !ok || v != "v" {
+		t.Fatalf("GetEx no-change = %q ok=%v err=%v", v, ok, err)
+	}
+	if at, hasTTL, _ := s.ExpireTime("k"); !hasTTL || at.Unix() != 1100 {
+		t.Fatalf("GetEx no-change altered the TTL: at=%d hasTTL=%v", at.Unix(), hasTTL)
+	}
+
+	// relative TTL
+	if _, ok, _ := s.GetEx("k", GetExOp{Mode: GetExSetTTL, TTL: 50 * time.Second}); !ok {
+		t.Fatal("GetEx set-ttl not ok")
+	}
+	if at, _, _ := s.ExpireTime("k"); at.Unix() != 1050 {
+		t.Fatalf("GetEx set-ttl deadline = %d, want 1050", at.Unix())
+	}
+
+	// persist removes the TTL
+	if _, ok, _ := s.GetEx("k", GetExOp{Mode: GetExPersist}); !ok {
+		t.Fatal("GetEx persist not ok")
+	}
+	if _, hasTTL, _ := s.ExpireTime("k"); hasTTL {
+		t.Fatal("GetEx persist left a TTL")
+	}
+
+	// absolute deadline in the future
+	if _, ok, _ := s.GetEx("k", GetExOp{Mode: GetExSetAt, At: time.Unix(2000, 0)}); !ok {
+		t.Fatal("GetEx set-at not ok")
+	}
+	if at, _, _ := s.ExpireTime("k"); at.Unix() != 2000 {
+		t.Fatalf("GetEx set-at deadline = %d, want 2000", at.Unix())
+	}
+
+	// absolute deadline in the past: returns the value but deletes the key
+	if v, ok, err := s.GetEx("k", GetExOp{Mode: GetExSetAt, At: time.Unix(500, 0)}); err != nil || !ok || v != "v" {
+		t.Fatalf("GetEx past-at = %q ok=%v err=%v", v, ok, err)
+	}
+	if s.Exists("k") != 0 {
+		t.Fatal("GetEx with a past deadline did not delete the key")
+	}
+
+	// a WRONGTYPE key errors and keeps its TTL untouched
+	s.push("lst", true, []string{"x"})
+	if _, _, err := s.GetEx("lst", GetExOp{Mode: GetExPersist}); err != ErrWrongType {
+		t.Fatalf("GetEx wrong type = %v, want ErrWrongType", err)
+	}
+}

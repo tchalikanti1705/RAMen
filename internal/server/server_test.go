@@ -706,3 +706,63 @@ func TestGetDel(t *testing.T) {
 	mustError(t, cli, "GETDEL")           // arity
 	mustError(t, cli, "GETDEL", "a", "b") // arity
 }
+
+func TestGetEx(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// missing key returns nil
+	if r, err := cli.Do("GETEX", "nope"); err != nil || r != nil {
+		t.Fatalf("GETEX missing = %v (err %v), want nil", r, err)
+	}
+
+	mustDo(t, cli, "SET", "k", "v")
+
+	// no option behaves like GET and leaves the TTL untouched
+	if r := mustDo(t, cli, "GETEX", "k"); r != "v" {
+		t.Fatalf("GETEX = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "k"); r != int64(-1) {
+		t.Fatalf("GETEX with no option set a TTL = %v", r)
+	}
+
+	// EX sets a TTL
+	if r := mustDo(t, cli, "GETEX", "k", "EX", "100"); r != "v" {
+		t.Fatalf("GETEX EX = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "k").(int64); r <= 0 || r > 100 {
+		t.Fatalf("GETEX EX TTL = %v, want (0,100]", r)
+	}
+
+	// PERSIST removes it
+	mustDo(t, cli, "GETEX", "k", "PERSIST")
+	if r := mustDo(t, cli, "TTL", "k"); r != int64(-1) {
+		t.Fatalf("GETEX PERSIST left a TTL = %v", r)
+	}
+
+	// EXAT with a past timestamp returns the value and deletes the key
+	if r := mustDo(t, cli, "GETEX", "k", "EXAT", "1"); r != "v" {
+		t.Fatalf("GETEX EXAT past = %v", r)
+	}
+	if r := mustDo(t, cli, "EXISTS", "k"); r != int64(0) {
+		t.Fatalf("GETEX EXAT past did not delete the key = %v", r)
+	}
+
+	// error paths must not touch the key
+	mustDo(t, cli, "SET", "k2", "v")
+	mustError(t, cli, "GETEX", "k2", "EX", "0")                     // non-positive TTL
+	mustError(t, cli, "GETEX", "k2", "EX", "notanint")              // bad TTL
+	mustError(t, cli, "GETEX", "k2", "EX", "10000000000")           // TTL overflows time.Duration
+	mustError(t, cli, "GETEX", "k2", "EXAT", "9223372036854775807") // absolute ts overflow
+	mustError(t, cli, "GETEX", "k2", "BOGUS")                       // unknown option
+	mustError(t, cli, "GETEX", "k2", "EX")                          // missing TTL value
+	mustError(t, cli, "GETEX", "k2", "PERSIST", "extra")            // trailing junk
+	mustError(t, cli, "GETEX")                                      // arity
+	if r := mustDo(t, cli, "EXISTS", "k2"); r != int64(1) {
+		t.Fatalf("a failed GETEX changed k2 = %v", r)
+	}
+
+	// WRONGTYPE
+	mustDo(t, cli, "RPUSH", "lst", "x")
+	mustError(t, cli, "GETEX", "lst")
+}
