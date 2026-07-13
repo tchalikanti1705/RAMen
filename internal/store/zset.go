@@ -1,6 +1,14 @@
 package store
 
-import "sort"
+import (
+	"errors"
+	"math"
+	"sort"
+)
+
+// ErrScoreNaN mirrors Redis' ZINCRBY error when an increment would make the
+// resulting score NaN (e.g. +inf plus -inf).
+var ErrScoreNaN = errors.New("ERR resulting score is not a number (NaN)")
 
 // zset is a sorted set: a member->score map. V1 sorts on demand rather than
 // maintaining a skiplist, which is adequate for the basic range ops the PRD
@@ -48,6 +56,37 @@ func (s *Store) ZAdd(key string, members []ZMember) (int, error) {
 		z.scores[m.Member] = m.Score
 	}
 	return added, nil
+}
+
+// ZIncrBy adds increment to member's score (treating a missing member as 0,
+// creating the set if absent) and returns the new score. It returns ErrScoreNaN
+// if the result would be NaN, leaving the set untouched.
+func (s *Store) ZIncrBy(key, member string, increment float64) (float64, error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	var z *zset
+	if found {
+		var err error
+		if z, err = asZSet(e); err != nil {
+			return 0, err
+		}
+	}
+	var cur float64
+	if z != nil {
+		cur = z.scores[member] // 0 if the member is absent
+	}
+	newScore := cur + increment
+	if math.IsNaN(newScore) {
+		return 0, ErrScoreNaN
+	}
+	if z == nil {
+		z = &zset{scores: make(map[string]float64)}
+		sh.m[key] = &entry{val: z}
+	}
+	z.scores[member] = newScore
+	return newScore, nil
 }
 
 // ZRem removes members and returns how many were removed.
