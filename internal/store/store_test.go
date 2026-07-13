@@ -738,3 +738,42 @@ func TestZIncrBy(t *testing.T) {
 		t.Fatalf("ZIncrBy wrong type = %v", err)
 	}
 }
+
+func TestZRank(t *testing.T) {
+	s := New()
+	s.ZAdd("z", []ZMember{{"a", 1}, {"b", 2}, {"c", 3}})
+
+	for m, want := range map[string]int{"a": 0, "b": 1, "c": 2} {
+		if r, found, err := s.ZRank("z", m); err != nil || !found || r != want {
+			t.Fatalf("ZRank %s = %d found=%v err=%v, want %d", m, r, found, err, want)
+		}
+	}
+	for m, want := range map[string]int{"c": 0, "b": 1, "a": 2} {
+		if r, found, _ := s.ZRevRank("z", m); !found || r != want {
+			t.Fatalf("ZRevRank %s = %d found=%v, want %d", m, r, found, want)
+		}
+	}
+
+	// ties are broken lexicographically by member
+	s.ZAdd("t", []ZMember{{"y", 5}, {"x", 5}})
+	if r, _, _ := s.ZRank("t", "x"); r != 0 {
+		t.Fatalf("ZRank tie x = %d, want 0", r)
+	}
+	if r, _, _ := s.ZRank("t", "y"); r != 1 {
+		t.Fatalf("ZRank tie y = %d, want 1", r)
+	}
+
+	// missing member and missing key both report found=false
+	if _, found, _ := s.ZRank("z", "nope"); found {
+		t.Fatal("ZRank missing member should be found=false")
+	}
+	if _, found, _ := s.ZRevRank("nokey", "a"); found {
+		t.Fatal("ZRevRank missing key should be found=false")
+	}
+
+	// WRONGTYPE
+	s.Set("str", "v", SetOptions{})
+	if _, _, err := s.ZRank("str", "a"); err != ErrWrongType {
+		t.Fatalf("ZRank wrong type = %v", err)
+	}
+}

@@ -873,3 +873,38 @@ func TestZIncrBy(t *testing.T) {
 	mustError(t, cli, "ZINCRBY", "str", "1", "a")
 	mustError(t, cli, "ZINCRBY", "z", "1")
 }
+
+func TestZRank(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "ZADD", "z", "1", "a", "2", "b", "3", "c")
+	if r := mustDo(t, cli, "ZRANK", "z", "a"); r != int64(0) {
+		t.Fatalf("ZRANK a = %v", r)
+	}
+	if r := mustDo(t, cli, "ZRANK", "z", "c"); r != int64(2) {
+		t.Fatalf("ZRANK c = %v", r)
+	}
+	if r := mustDo(t, cli, "ZREVRANK", "z", "a"); r != int64(2) {
+		t.Fatalf("ZREVRANK a = %v", r)
+	}
+	if r := mustDo(t, cli, "ZREVRANK", "z", "c"); r != int64(0) {
+		t.Fatalf("ZREVRANK c = %v", r)
+	}
+
+	// missing member and missing key both return nil
+	if r, err := cli.Do("ZRANK", "z", "nope"); err != nil || r != nil {
+		t.Fatalf("ZRANK missing member = %v", r)
+	}
+	if r, err := cli.Do("ZREVRANK", "z", "nope"); err != nil || r != nil {
+		t.Fatalf("ZREVRANK missing member = %v", r)
+	}
+	if r, err := cli.Do("ZRANK", "nokey", "a"); err != nil || r != nil {
+		t.Fatalf("ZRANK missing key = %v", r)
+	}
+
+	// WRONGTYPE and arity
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "ZRANK", "str", "a")
+	mustError(t, cli, "ZRANK", "z")
+}
