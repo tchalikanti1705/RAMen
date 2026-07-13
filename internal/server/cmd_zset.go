@@ -69,6 +69,34 @@ func (c *conn) cmdZScore(args []string) error {
 	return c.writeBulk(formatFloat(score))
 }
 
+func (c *conn) cmdZRank(args []string) error {
+	if len(args) != 3 {
+		return c.wrongArgs("zrank")
+	}
+	rank, found, err := c.s.store.ZRank(args[1], args[2])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	if !found {
+		return c.writeNull()
+	}
+	return c.writeInt(int64(rank))
+}
+
+func (c *conn) cmdZRevRank(args []string) error {
+	if len(args) != 3 {
+		return c.wrongArgs("zrevrank")
+	}
+	rank, found, err := c.s.store.ZRevRank(args[1], args[2])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	if !found {
+		return c.writeNull()
+	}
+	return c.writeInt(int64(rank))
+}
+
 func (c *conn) cmdZCard(args []string) error {
 	if len(args) != 2 {
 		return c.wrongArgs("zcard")
