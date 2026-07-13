@@ -160,12 +160,18 @@ func (c *conn) cmdGetEx(args []string) error {
 				op.Mode = store.GetExSetTTL
 				op.TTL = time.Duration(n) * unit
 			case "EXAT":
-				if n > maxExpireSeconds || n < -maxExpireSeconds {
+				// Redis rejects a non-positive absolute expire up front and
+				// leaves the key untouched; a positive-but-past one (e.g. EXAT 1)
+				// still deletes it.
+				if n <= 0 || n > maxExpireSeconds {
 					return c.writeError("ERR invalid expire time in 'getex' command")
 				}
 				op.Mode = store.GetExSetAt
 				op.At = time.Unix(n, 0)
 			case "PXAT":
+				if n <= 0 {
+					return c.writeError("ERR invalid expire time in 'getex' command")
+				}
 				op.Mode = store.GetExSetAt
 				op.At = time.UnixMilli(n)
 			}

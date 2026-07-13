@@ -754,10 +754,17 @@ func TestGetEx(t *testing.T) {
 	mustError(t, cli, "GETEX", "k2", "EX", "notanint")              // bad TTL
 	mustError(t, cli, "GETEX", "k2", "EX", "10000000000")           // TTL overflows time.Duration
 	mustError(t, cli, "GETEX", "k2", "EXAT", "9223372036854775807") // absolute ts overflow
-	mustError(t, cli, "GETEX", "k2", "BOGUS")                       // unknown option
-	mustError(t, cli, "GETEX", "k2", "EX")                          // missing TTL value
-	mustError(t, cli, "GETEX", "k2", "PERSIST", "extra")            // trailing junk
-	mustError(t, cli, "GETEX")                                      // arity
+	// a non-positive absolute expire must error and leave the key untouched;
+	// unlike EXPIREAT, GETEX rejects EXAT/PXAT <= 0 rather than deleting the key
+	if e := mustError(t, cli, "GETEX", "k2", "EXAT", "0"); e.Error() != "ERR invalid expire time in 'getex' command" {
+		t.Fatalf("GETEX EXAT 0 error = %q", e.Error())
+	}
+	mustError(t, cli, "GETEX", "k2", "EXAT", "-5")
+	mustError(t, cli, "GETEX", "k2", "PXAT", "0")
+	mustError(t, cli, "GETEX", "k2", "BOGUS")            // unknown option
+	mustError(t, cli, "GETEX", "k2", "EX")               // missing TTL value
+	mustError(t, cli, "GETEX", "k2", "PERSIST", "extra") // trailing junk
+	mustError(t, cli, "GETEX")                           // arity
 	if r := mustDo(t, cli, "EXISTS", "k2"); r != int64(1) {
 		t.Fatalf("a failed GETEX changed k2 = %v", r)
 	}
