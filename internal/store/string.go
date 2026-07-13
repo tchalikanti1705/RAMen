@@ -100,6 +100,24 @@ func (s *Store) GetSet(key, val string) (old string, hadOld bool, err error) {
 	return old, hadOld, nil
 }
 
+// GetDel returns the string at key and deletes it, atomically. ok is false when
+// the key is missing (nothing is deleted); a WRONGTYPE key is left in place.
+func (s *Store) GetDel(key string) (val string, ok bool, err error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return "", false, nil
+	}
+	str, err := asString(e)
+	if err != nil {
+		return "", false, err
+	}
+	delete(sh.m, key)
+	return str, true, nil
+}
+
 // Append concatenates val to the string at key (creating it if absent) and
 // returns the new length.
 func (s *Store) Append(key, val string) (int, error) {
