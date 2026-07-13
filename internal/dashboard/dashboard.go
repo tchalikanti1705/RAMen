@@ -8,8 +8,11 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/Rohit-Dnath/RAMen/internal/server"
@@ -40,6 +43,7 @@ func New(srv *server.Server, addr string) *Dashboard {
 	})
 	mux.HandleFunc("/api/stats", d.handleStats)
 	mux.HandleFunc("/api/keys", d.handleKeys)
+	mux.HandleFunc("/metrics", d.handleMetrics)
 	d.http = &http.Server{Addr: addr, Handler: mux}
 	return d
 }
@@ -103,6 +107,32 @@ func (d *Dashboard) handleStats(w http.ResponseWriter, r *http.Request) {
 		"memory_bytes":      m.memAllocBytes,
 		"uptime_seconds":    m.uptimeSeconds,
 	})
+}
+
+// handleMetrics exposes the same counters as /api/stats in the Prometheus text
+// exposition format (version 0.0.4) so Prometheus/Grafana can scrape them. It is
+// counters-only (no key names or values) and unauthenticated, like the rest of
+// the dashboard, and is only reachable when the dashboard is enabled.
+func (d *Dashboard) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	m := d.gather()
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	metric(w, "ramen_uptime_seconds", "Seconds since the server started.", "gauge", strconv.Itoa(m.uptimeSeconds))
+	metric(w, "ramen_connected_clients", "Client connections currently open.", "gauge", strconv.FormatInt(m.connectedClients, 10))
+	metric(w, "ramen_connections_total", "Client connections accepted since start.", "counter", strconv.FormatInt(m.totalConns, 10))
+	metric(w, "ramen_commands_processed_total", "Commands processed since start.", "counter", strconv.FormatInt(m.commands, 10))
+	metric(w, "ramen_cache_hits_total", "Semantic cache hits since start.", "counter", strconv.FormatInt(m.cacheHits, 10))
+	metric(w, "ramen_cache_misses_total", "Semantic cache misses since start.", "counter", strconv.FormatInt(m.cacheMisses, 10))
+	metric(w, "ramen_cache_hit_ratio", "Semantic cache hit ratio in [0,1] over the process lifetime.", "gauge", strconv.FormatFloat(m.cacheHitRatio, 'g', -1, 64))
+	metric(w, "ramen_keys", "Keys currently in the keyspace.", "gauge", strconv.Itoa(m.keys))
+	metric(w, "ramen_memory_alloc_bytes", "Heap memory currently allocated, in bytes.", "gauge", strconv.FormatUint(m.memAllocBytes, 10))
+}
+
+// metric writes one Prometheus metric: its HELP line, TYPE line, and a single
+// sample, each terminated by a newline (so the body ends with one, which some
+// parsers require). value is pre-formatted so callers pick the right encoding
+// per type (%g for the ratio, plain integers otherwise).
+func metric(w io.Writer, name, help, typ, value string) {
+	fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n%s %s\n", name, help, name, typ, name, value)
 }
 
 func (d *Dashboard) handleKeys(w http.ResponseWriter, r *http.Request) {
