@@ -54,3 +54,36 @@ func (c *conn) cmdSCard(args []string) error {
 	}
 	return c.writeInt(int64(n))
 }
+
+func (c *conn) cmdSInter(args []string) error {
+	if len(args) < 2 {
+		return c.wrongArgs("sinter")
+	}
+	ms, err := c.s.store.SInter(args[1:])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeStringArray(ms)
+}
+
+func (c *conn) cmdSUnion(args []string) error {
+	if len(args) < 2 {
+		return c.wrongArgs("sunion")
+	}
+	ms, err := c.s.store.SUnion(args[1:])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeStringArray(ms)
+}
+
+func (c *conn) cmdSDiff(args []string) error {
+	if len(args) < 2 {
+		return c.wrongArgs("sdiff")
+	}
+	ms, err := c.s.store.SDiff(args[1:])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeStringArray(ms)
+}
