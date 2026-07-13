@@ -908,3 +908,31 @@ func TestZRank(t *testing.T) {
 	mustError(t, cli, "ZRANK", "str", "a")
 	mustError(t, cli, "ZRANK", "z")
 }
+
+func TestZRevRange(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "ZADD", "z", "1", "a", "2", "b", "3", "c")
+	// highest score first
+	r := mustDo(t, cli, "ZREVRANGE", "z", "0", "-1").([]any)
+	if len(r) != 3 || r[0] != "c" || r[1] != "b" || r[2] != "a" {
+		t.Fatalf("ZREVRANGE = %v", r)
+	}
+	// WITHSCORES interleaves member then score
+	r = mustDo(t, cli, "ZREVRANGE", "z", "0", "-1", "WITHSCORES").([]any)
+	if len(r) != 6 || r[0] != "c" || r[1] != "3" || r[2] != "b" || r[3] != "2" {
+		t.Fatalf("ZREVRANGE WITHSCORES = %v", r)
+	}
+	// missing key -> empty
+	if r := mustDo(t, cli, "ZREVRANGE", "nokey", "0", "-1").([]any); len(r) != 0 {
+		t.Fatalf("ZREVRANGE missing = %v", r)
+	}
+
+	// errors
+	mustError(t, cli, "ZREVRANGE", "z", "0", "notanint")
+	mustError(t, cli, "ZREVRANGE", "z", "0", "-1", "BOGUS")
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "ZREVRANGE", "str", "0", "-1")
+	mustError(t, cli, "ZREVRANGE", "z", "0")
+}

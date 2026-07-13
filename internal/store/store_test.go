@@ -777,3 +777,43 @@ func TestZRank(t *testing.T) {
 		t.Fatalf("ZRank wrong type = %v", err)
 	}
 }
+
+func zmemberNames(ms []ZMember) []string {
+	out := make([]string, len(ms))
+	for i, m := range ms {
+		out[i] = m.Member
+	}
+	return out
+}
+
+func TestZRevRange(t *testing.T) {
+	s := New()
+	s.ZAdd("z", []ZMember{{"a", 1}, {"b", 2}, {"c", 3}})
+
+	// full reverse range: highest score first
+	r, err := s.ZRevRange("z", 0, -1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(zmemberNames(r), ","); got != "c,b,a" {
+		t.Fatalf("ZRevRange 0 -1 = %q, want c,b,a", got)
+	}
+	// partial range
+	r, _ = s.ZRevRange("z", 0, 1)
+	if got := strings.Join(zmemberNames(r), ","); got != "c,b" {
+		t.Fatalf("ZRevRange 0 1 = %q, want c,b", got)
+	}
+	// start past the end -> empty; missing key -> empty
+	if r, _ := s.ZRevRange("z", 5, 10); len(r) != 0 {
+		t.Fatalf("ZRevRange out-of-range = %v", r)
+	}
+	if r, _ := s.ZRevRange("nokey", 0, -1); len(r) != 0 {
+		t.Fatalf("ZRevRange missing = %v", r)
+	}
+
+	// WRONGTYPE
+	s.Set("str", "v", SetOptions{})
+	if _, err := s.ZRevRange("str", 0, -1); err != ErrWrongType {
+		t.Fatalf("ZRevRange wrong type = %v", err)
+	}
+}

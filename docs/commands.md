@@ -103,6 +103,7 @@ LINSERT q BEFORE b Z   # insert Z before the first "b"; returns new length, or -
 | `ZRANGEBYSCORE <key> <min> <max> [WITHSCORES]` | Members with a score in `[min, max]`. |
 | `ZRANK <key> <member>` | 0-based rank (lowest score first), or nil if missing. |
 | `ZREVRANK <key> <member>` | 0-based rank (highest score first), or nil if missing. |
+| `ZREVRANGE <key> <start> <stop> [WITHSCORES]` | Members in the rank range, highest score first. |
 
 ```
 ZADD board 100 alice 250 bob
