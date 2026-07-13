@@ -118,6 +118,54 @@ func (s *Store) GetDel(key string) (val string, ok bool, err error) {
 	return str, true, nil
 }
 
+// GetExMode selects the TTL change GETEX applies after reading a key.
+type GetExMode int
+
+const (
+	GetExNoChange GetExMode = iota // leave the TTL untouched (plain GET)
+	GetExSetTTL                    // set a relative TTL: expireAt = now + TTL
+	GetExSetAt                     // set an absolute deadline (delete if already past)
+	GetExPersist                   // remove any TTL
+)
+
+// GetExOp describes GETEX's optional TTL change.
+type GetExOp struct {
+	Mode GetExMode
+	TTL  time.Duration // used when Mode == GetExSetTTL
+	At   time.Time     // used when Mode == GetExSetAt
+}
+
+// GetEx returns the string at key and optionally adjusts its TTL per op: no
+// change (like GET), a relative TTL, an absolute deadline (a past one deletes
+// the key while still returning the value, matching Redis), or PERSIST. ok is
+// false when the key is missing.
+func (s *Store) GetEx(key string, op GetExOp) (val string, ok bool, err error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return "", false, nil
+	}
+	str, err := asString(e)
+	if err != nil {
+		return "", false, err
+	}
+	switch op.Mode {
+	case GetExSetTTL:
+		e.expireAt = s.now().Add(op.TTL)
+	case GetExSetAt:
+		if !op.At.After(s.now()) {
+			delete(sh.m, key)
+			return str, true, nil
+		}
+		e.expireAt = op.At
+	case GetExPersist:
+		e.expireAt = time.Time{}
+	}
+	return str, true, nil
+}
+
 // Append concatenates val to the string at key (creating it if absent) and
 // returns the new length.
 func (s *Store) Append(key, val string) (int, error) {
