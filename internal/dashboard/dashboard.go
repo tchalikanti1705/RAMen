@@ -58,20 +58,50 @@ func (d *Dashboard) ListenAndServe(ctx context.Context) error {
 	return nil
 }
 
-func (d *Dashboard) handleStats(w http.ResponseWriter, r *http.Request) {
+// metrics is a point-in-time snapshot of the server's counters and gauges. Both
+// /api/stats and /metrics read from gather so a counter added here shows up in
+// both places at once, and neither handler reaches into the server on its own.
+type metrics struct {
+	uptimeSeconds    int
+	connectedClients int64
+	totalConns       int64
+	commands         int64
+	cacheHits        int64
+	cacheMisses      int64
+	cacheHitRatio    float64
+	keys             int
+	memAllocBytes    uint64
+}
+
+func (d *Dashboard) gather() metrics {
 	st := d.srv.Stats()
 	var mem runtime.MemStats
 	runtime.ReadMemStats(&mem)
+	return metrics{
+		uptimeSeconds:    int(d.srv.Uptime().Seconds()),
+		connectedClients: st.Connections.Load(),
+		totalConns:       st.TotalConns.Load(),
+		commands:         st.Commands.Load(),
+		cacheHits:        st.CacheHits.Load(),
+		cacheMisses:      st.CacheMisses.Load(),
+		cacheHitRatio:    st.HitRatio(),
+		keys:             d.srv.Store().DBSize(),
+		memAllocBytes:    mem.Alloc,
+	}
+}
+
+func (d *Dashboard) handleStats(w http.ResponseWriter, r *http.Request) {
+	m := d.gather()
 	writeJSON(w, map[string]any{
-		"keys":              d.srv.Store().DBSize(),
-		"connected_clients": st.Connections.Load(),
-		"total_connections": st.TotalConns.Load(),
-		"commands":          st.Commands.Load(),
-		"cache_hits":        st.CacheHits.Load(),
-		"cache_misses":      st.CacheMisses.Load(),
-		"cache_hit_ratio":   st.HitRatio(),
-		"memory_bytes":      mem.Alloc,
-		"uptime_seconds":    int(d.srv.Uptime().Seconds()),
+		"keys":              m.keys,
+		"connected_clients": m.connectedClients,
+		"total_connections": m.totalConns,
+		"commands":          m.commands,
+		"cache_hits":        m.cacheHits,
+		"cache_misses":      m.cacheMisses,
+		"cache_hit_ratio":   m.cacheHitRatio,
+		"memory_bytes":      m.memAllocBytes,
+		"uptime_seconds":    m.uptimeSeconds,
 	})
 }
 
