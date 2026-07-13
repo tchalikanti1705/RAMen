@@ -779,6 +779,14 @@ func TestSetAlgebra(t *testing.T) {
 	if _, err := s.SDiff([]string{"str", "a"}); err != ErrWrongType {
 		t.Fatalf("SDiff wrong type = %v", err)
 	}
+	// SINTER stops at the first missing key: a wrong-type key AFTER it is never
+	// reached, so the result is empty (not WRONGTYPE), matching Redis.
+	r, err = s.SInter([]string{"a", "nope", "str"})
+	check("SInter missing-before-wrongtype", r, err)
+	// SUNION/SDIFF still type-check every present key regardless of a missing one.
+	if _, err := s.SUnion([]string{"a", "nope", "str"}); err != ErrWrongType {
+		t.Fatalf("SUnion missing-before-wrongtype = %v, want WRONGTYPE", err)
+	}
 }
 
 func hasDup(xs []string) bool {
@@ -835,6 +843,15 @@ func TestSetPopRandom(t *testing.T) {
 	// a huge negative count errors rather than allocating unbounded / overflowing
 	if _, err := s.SRandMember("s", math.MinInt64); err != ErrSampleCount {
 		t.Fatalf("SRandMember min-int64 = %v, want ErrSampleCount", err)
+	}
+	// but the cap fires only after the key/type check: a missing key is still
+	// empty, and a wrong type is still WRONGTYPE, even with a huge count.
+	if r, err := s.SRandMember("nope", math.MinInt64); err != nil || r != nil {
+		t.Fatalf("SRandMember missing huge = %v %v, want nil nil", r, err)
+	}
+	s.Set("str", "v", SetOptions{})
+	if _, err := s.SRandMember("str", math.MinInt64); err != ErrWrongType {
+		t.Fatalf("SRandMember wrong-type huge = %v, want WRONGTYPE", err)
 	}
 
 	// SPop removes what it returns
