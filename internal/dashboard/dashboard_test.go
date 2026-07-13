@@ -135,3 +135,17 @@ func sampleValue(t *testing.T, text, name string) int64 {
 	t.Fatalf("no sample line for %s", name)
 	return 0
 }
+
+func TestEscapeHelp(t *testing.T) {
+	cases := map[string]string{
+		"plain ASCII help.":   "plain ASCII help.",
+		"has\\backslash":      `has\\backslash`,
+		"line one\ntwo":       `line one\ntwo`,
+		"both \\ and \n here": `both \\ and \n here`,
+	}
+	for in, want := range cases {
+		if got := escapeHelp(in); got != want {
+			t.Fatalf("escapeHelp(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

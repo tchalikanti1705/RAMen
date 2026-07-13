@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Rohit-Dnath/RAMen/internal/server"
@@ -132,7 +133,18 @@ func (d *Dashboard) handleMetrics(w http.ResponseWriter, r *http.Request) {
 // parsers require). value is pre-formatted so callers pick the right encoding
 // per type (%g for the ratio, plain integers otherwise).
 func metric(w io.Writer, name, help, typ, value string) {
-	fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n%s %s\n", name, help, name, typ, name, value)
+	fmt.Fprintf(w, "# HELP %s %s\n# TYPE %s %s\n%s %s\n", name, escapeHelp(help), name, typ, name, value)
+}
+
+// escapeHelp escapes a HELP string per the Prometheus text exposition format,
+// where backslash and newline are the only characters that must be escaped.
+// Today's help strings are plain ASCII, but this keeps the helper from emitting
+// a malformed or split line if one ever contains a backslash or newline.
+func escapeHelp(s string) string {
+	if !strings.ContainsAny(s, "\\\n") {
+		return s
+	}
+	return strings.NewReplacer("\\", `\\`, "\n", `\n`).Replace(s)
 }
 
 func (d *Dashboard) handleKeys(w http.ResponseWriter, r *http.Request) {
