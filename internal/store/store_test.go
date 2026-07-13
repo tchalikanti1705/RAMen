@@ -872,3 +872,57 @@ func TestRenameConcurrent(t *testing.T) {
 		t.Fatalf("after concurrent renames, live keys among {a,b} = %d, want 1", n)
 	}
 }
+
+func TestRandomKey(t *testing.T) {
+	s := New()
+	cur := time.Unix(1000, 0)
+	s.now = func() time.Time { return cur }
+
+	// empty keyspace
+	if _, ok := s.RandomKey(); ok {
+		t.Fatal("RandomKey on an empty keyspace should be ok=false")
+	}
+
+	// a single key is always the one returned
+	s.Set("only", "v", SetOptions{})
+	if k, ok := s.RandomKey(); !ok || k != "only" {
+		t.Fatalf("RandomKey single = %q ok=%v", k, ok)
+	}
+
+	// across a large keyspace every result is a live member of the set
+	want := map[string]bool{"only": true}
+	for i := 0; i < 1000; i++ {
+		k := "k" + strconv.Itoa(i)
+		s.Set(k, "v", SetOptions{})
+		want[k] = true
+	}
+	for i := 0; i < 200; i++ {
+		k, ok := s.RandomKey()
+		if !ok || !want[k] {
+			t.Fatalf("RandomKey returned %q ok=%v, not a live key", k, ok)
+		}
+	}
+
+	// expired keys are never returned
+	s.Flush()
+	s.Set("live", "v", SetOptions{})
+	s.Set("dead", "v", SetOptions{})
+	s.Expire("dead", time.Second)
+	cur = cur.Add(2 * time.Second)
+	for i := 0; i < 100; i++ {
+		if k, ok := s.RandomKey(); !ok || k != "live" {
+			t.Fatalf("RandomKey should only return the live key, got %q ok=%v", k, ok)
+		}
+	}
+
+	// a keyspace whose keys have all expired reports empty again
+	s.Flush()
+	s.Set("g1", "v", SetOptions{})
+	s.Set("g2", "v", SetOptions{})
+	s.Expire("g1", time.Second)
+	s.Expire("g2", time.Second)
+	cur = cur.Add(2 * time.Second)
+	if _, ok := s.RandomKey(); ok {
+		t.Fatal("RandomKey with only expired keys should be ok=false")
+	}
+}

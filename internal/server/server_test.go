@@ -922,3 +922,28 @@ func TestRenameNX(t *testing.T) {
 	mustError(t, cli, "RENAMENX", "x")           // arity
 	mustError(t, cli, "RENAMENX", "x", "y", "z") // arity
 }
+
+func TestRandomKey(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// an empty keyspace returns nil
+	if r, err := cli.Do("RANDOMKEY"); err != nil || r != nil {
+		t.Fatalf("RANDOMKEY on empty keyspace = %v (err %v), want nil", r, err)
+	}
+
+	// with keys present it returns one of them
+	keys := map[string]bool{"a": true, "b": true, "c": true}
+	for k := range keys {
+		mustDo(t, cli, "SET", k, "v")
+	}
+	for i := 0; i < 50; i++ {
+		r := mustDo(t, cli, "RANDOMKEY")
+		k, ok := r.(string)
+		if !ok || !keys[k] {
+			t.Fatalf("RANDOMKEY = %v, want one of a/b/c", r)
+		}
+	}
+
+	mustError(t, cli, "RANDOMKEY", "extra") // arity: takes no arguments
+}
