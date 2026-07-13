@@ -43,6 +43,7 @@ func (s *Server) registerCommands() {
 		"TYPE":       (*conn).cmdType,
 		"RENAME":     (*conn).cmdRename,
 		"RENAMENX":   (*conn).cmdRenameNX,
+		"RANDOMKEY":  (*conn).cmdRandomKey,
 
 		// strings
 		"GET":         (*conn).cmdGet,
@@ -368,6 +369,16 @@ func (c *conn) cmdRenameNX(args []string) error {
 		return c.storeErr(err)
 	}
 	return c.writeInt(boolToInt(renamed))
+}
+
+func (c *conn) cmdRandomKey(args []string) error {
+	if len(args) != 1 {
+		return c.wrongArgs("randomkey")
+	}
+	if k, ok := c.s.store.RandomKey(); ok {
+		return c.writeBulk(k)
+	}
+	return c.writeNull()
 }
 
 func boolToInt(b bool) int64 {
