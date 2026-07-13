@@ -708,3 +708,72 @@ func TestMSetNXConcurrent(t *testing.T) {
 		t.Fatalf("MSetNX torn write: %s=%q %s=%q, want one winner's mark on both", kx, vx, ky, vy)
 	}
 }
+
+// sameSet reports whether got contains exactly the want members, in any order.
+func sameSet(got []string, want ...string) bool {
+	if len(got) != len(want) {
+		return false
+	}
+	m := make(map[string]bool, len(got))
+	for _, g := range got {
+		m[g] = true
+	}
+	for _, w := range want {
+		if !m[w] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestSetAlgebra(t *testing.T) {
+	s := New()
+	s.SAdd("a", "1", "2", "3")
+	s.SAdd("b", "2", "3", "4")
+	s.SAdd("c", "3", "4", "5")
+
+	check := func(label string, got []string, err error, want ...string) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("%s: unexpected error %v", label, err)
+		}
+		if !sameSet(got, want...) {
+			t.Fatalf("%s = %v, want %v", label, got, want)
+		}
+	}
+
+	r, err := s.SInter([]string{"a", "b", "c"})
+	check("SInter abc", r, err, "3")
+	r, err = s.SInter([]string{"a", "b"})
+	check("SInter ab", r, err, "2", "3")
+	r, err = s.SInter([]string{"a", "nope"}) // missing key -> empty
+	check("SInter missing", r, err)
+	r, err = s.SInter([]string{"a"}) // single key -> the set itself
+	check("SInter single", r, err, "1", "2", "3")
+
+	r, err = s.SUnion([]string{"a", "b"})
+	check("SUnion ab", r, err, "1", "2", "3", "4")
+	r, err = s.SUnion([]string{"a", "nope"})
+	check("SUnion missing", r, err, "1", "2", "3")
+
+	r, err = s.SDiff([]string{"a", "b"})
+	check("SDiff ab", r, err, "1")
+	r, err = s.SDiff([]string{"a", "b", "c"})
+	check("SDiff abc", r, err, "1")
+	r, err = s.SDiff([]string{"nope", "a"}) // missing first -> empty
+	check("SDiff missing-first", r, err)
+	r, err = s.SDiff([]string{"a", "nope"}) // missing other -> first unchanged
+	check("SDiff missing-other", r, err, "1", "2", "3")
+
+	// a WRONGTYPE key anywhere fails the whole op
+	s.Set("str", "v", SetOptions{})
+	if _, err := s.SInter([]string{"a", "str"}); err != ErrWrongType {
+		t.Fatalf("SInter wrong type = %v", err)
+	}
+	if _, err := s.SUnion([]string{"str"}); err != ErrWrongType {
+		t.Fatalf("SUnion wrong type = %v", err)
+	}
+	if _, err := s.SDiff([]string{"str", "a"}); err != ErrWrongType {
+		t.Fatalf("SDiff wrong type = %v", err)
+	}
+}

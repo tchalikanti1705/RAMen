@@ -847,3 +847,59 @@ func TestMSetNX(t *testing.T) {
 	mustError(t, cli, "MSETNX", "k", "v", "k2") // dangling key
 	mustError(t, cli, "MSETNX")                 // nothing
 }
+
+// sameReply reports whether an array reply holds exactly the want members, in
+// any order (set replies are unordered).
+func sameReply(r any, want ...string) bool {
+	arr, ok := r.([]any)
+	if !ok {
+		return r == nil && len(want) == 0
+	}
+	if len(arr) != len(want) {
+		return false
+	}
+	m := make(map[string]bool, len(arr))
+	for _, e := range arr {
+		if s, ok := e.(string); ok {
+			m[s] = true
+		}
+	}
+	for _, w := range want {
+		if !m[w] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestSetAlgebra(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "SADD", "a", "1", "2", "3")
+	mustDo(t, cli, "SADD", "b", "2", "3", "4")
+
+	if r := mustDo(t, cli, "SINTER", "a", "b"); !sameReply(r, "2", "3") {
+		t.Fatalf("SINTER = %v", r)
+	}
+	if r := mustDo(t, cli, "SUNION", "a", "b"); !sameReply(r, "1", "2", "3", "4") {
+		t.Fatalf("SUNION = %v", r)
+	}
+	if r := mustDo(t, cli, "SDIFF", "a", "b"); !sameReply(r, "1") {
+		t.Fatalf("SDIFF = %v", r)
+	}
+	// a missing key is treated as an empty set
+	if r := mustDo(t, cli, "SINTER", "a", "nope"); !sameReply(r) {
+		t.Fatalf("SINTER with missing key = %v, want empty", r)
+	}
+	if r := mustDo(t, cli, "SUNION", "a", "nope"); !sameReply(r, "1", "2", "3") {
+		t.Fatalf("SUNION with missing key = %v", r)
+	}
+
+	// WRONGTYPE and arity
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "SINTER", "a", "str")
+	mustError(t, cli, "SINTER")
+	mustError(t, cli, "SUNION")
+	mustError(t, cli, "SDIFF")
+}
