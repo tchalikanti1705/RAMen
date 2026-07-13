@@ -57,6 +57,7 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 | `INCRBYFLOAT <key> <n>` | Add float `n` to a float string; returns the new value. |
 | `MGET <key> [key ...]` | Multiple gets. |
 | `MSET <key> <val> [key val ...]` | Multiple sets. |
+| `MSETNX <key> <val> [key val ...]` | Set all pairs only if none of the keys exist; `1` if set, `0` otherwise. |
 
 ## Hashes
 

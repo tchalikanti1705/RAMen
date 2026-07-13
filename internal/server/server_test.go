@@ -766,3 +766,31 @@ func TestGetEx(t *testing.T) {
 	mustDo(t, cli, "RPUSH", "lst", "x")
 	mustError(t, cli, "GETEX", "lst")
 }
+
+func TestMSetNX(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// all keys new -> 1, everything set
+	if r := mustDo(t, cli, "MSETNX", "a", "1", "b", "2", "c", "3"); r != int64(1) {
+		t.Fatalf("MSETNX all-new = %v, want 1", r)
+	}
+	if r := mustDo(t, cli, "GET", "b"); r != "2" {
+		t.Fatalf("MSETNX did not set b = %v", r)
+	}
+
+	// any key already present -> 0, nothing written
+	if r := mustDo(t, cli, "MSETNX", "d", "4", "a", "9", "e", "5"); r != int64(0) {
+		t.Fatalf("MSETNX with an existing key = %v, want 0", r)
+	}
+	if r := mustDo(t, cli, "EXISTS", "d", "e"); r != int64(0) {
+		t.Fatalf("MSETNX wrote keys despite an existing one = %v", r)
+	}
+	if r := mustDo(t, cli, "GET", "a"); r != "1" {
+		t.Fatalf("MSETNX overwrote the existing key = %v", r)
+	}
+
+	mustError(t, cli, "MSETNX", "k")            // no value for the key
+	mustError(t, cli, "MSETNX", "k", "v", "k2") // dangling key
+	mustError(t, cli, "MSETNX")                 // nothing
+}

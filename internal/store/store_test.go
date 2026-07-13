@@ -607,3 +607,58 @@ func TestGetEx(t *testing.T) {
 		t.Fatalf("GetEx wrong type = %v, want ErrWrongType", err)
 	}
 }
+
+func TestMSetNX(t *testing.T) {
+	s := New()
+	cur := time.Unix(1000, 0)
+	s.now = func() time.Time { return cur }
+
+	// all keys new: writes everything, returns true
+	if !s.MSetNX([]string{"a", "b", "c"}, []string{"1", "2", "3"}) {
+		t.Fatal("MSetNX to a clean keyspace should be true")
+	}
+	for k, want := range map[string]string{"a": "1", "b": "2", "c": "3"} {
+		if v, _, _ := s.Get(k); v != want {
+			t.Fatalf("MSetNX %s = %q, want %q", k, v, want)
+		}
+	}
+
+	// any key already present: writes nothing, returns false
+	if s.MSetNX([]string{"d", "a", "e"}, []string{"4", "9", "5"}) {
+		t.Fatal("MSetNX with an existing key should be false")
+	}
+	if s.Exists("d") != 0 || s.Exists("e") != 0 {
+		t.Fatal("MSetNX must not write any key when one already exists")
+	}
+	if v, _, _ := s.Get("a"); v != "1" {
+		t.Fatalf("MSetNX must not overwrite the existing key, a = %q", v)
+	}
+
+	// a WRONGTYPE key still counts as existing and blocks the whole op
+	s.push("lst", true, []string{"x"})
+	if s.MSetNX([]string{"f", "lst"}, []string{"6", "7"}) {
+		t.Fatal("MSetNX with an existing non-string key should be false")
+	}
+	if s.Exists("f") != 0 {
+		t.Fatal("MSetNX wrote a key alongside an existing non-string key")
+	}
+
+	// an expired key does not count as existing
+	s.Set("g", "old", SetOptions{})
+	s.Expire("g", time.Second)
+	cur = cur.Add(2 * time.Second)
+	if !s.MSetNX([]string{"g"}, []string{"new"}) {
+		t.Fatal("MSetNX over an expired key should be true")
+	}
+	if v, _, _ := s.Get("g"); v != "new" {
+		t.Fatalf("MSetNX over an expired key = %q, want new", v)
+	}
+
+	// duplicate keys in one call: the last value wins
+	if !s.MSetNX([]string{"h", "h"}, []string{"first", "second"}) {
+		t.Fatal("MSetNX with duplicate new keys should be true")
+	}
+	if v, _, _ := s.Get("h"); v != "second" {
+		t.Fatalf("MSetNX duplicate key = %q, want second (last wins)", v)
+	}
+}
