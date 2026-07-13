@@ -30,12 +30,23 @@ type VecRecord struct {
 }
 
 // Export returns a snapshot of every live key. It is safe to call while the
-// store is serving traffic; each shard is read-locked in turn.
+// store is serving traffic. Every shard is read-locked for the whole scan so
+// the snapshot is a globally consistent view: RENAME moves a key from one shard
+// to another, so releasing each shard before reading the next could otherwise
+// record the key twice or miss it entirely. Locks are taken in shard-index
+// order, matching every other multi-shard operation, so this cannot deadlock.
 func (s *Store) Export() []Record {
 	now := s.now()
-	var out []Record
 	for _, sh := range s.shards {
 		sh.mu.RLock()
+	}
+	defer func() {
+		for _, sh := range s.shards {
+			sh.mu.RUnlock()
+		}
+	}()
+	var out []Record
+	for _, sh := range s.shards {
 		for k, e := range sh.m {
 			if e.expired(now) {
 				continue
@@ -68,7 +79,6 @@ func (s *Store) Export() []Record {
 			}
 			out = append(out, rec)
 		}
-		sh.mu.RUnlock()
 	}
 	return out
 }
