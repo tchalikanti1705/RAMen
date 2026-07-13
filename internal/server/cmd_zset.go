@@ -1,6 +1,7 @@
 package server
 
 import (
+	"math"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,22 @@ func (c *conn) cmdZAdd(args []string) error {
 		return c.storeErr(err)
 	}
 	return c.writeInt(int64(n))
+}
+
+// cmdZIncrBy implements ZINCRBY key increment member.
+func (c *conn) cmdZIncrBy(args []string) error {
+	if len(args) != 4 {
+		return c.wrongArgs("zincrby")
+	}
+	inc, err := strconv.ParseFloat(args[2], 64)
+	if err != nil || math.IsNaN(inc) {
+		return c.writeError("ERR value is not a valid float")
+	}
+	score, err := c.s.store.ZIncrBy(args[1], args[3], inc)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeBulk(formatFloat(score))
 }
 
 func (c *conn) cmdZRem(args []string) error {
