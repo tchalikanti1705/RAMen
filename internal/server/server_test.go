@@ -847,3 +847,29 @@ func TestMSetNX(t *testing.T) {
 	mustError(t, cli, "MSETNX", "k", "v", "k2") // dangling key
 	mustError(t, cli, "MSETNX")                 // nothing
 }
+
+func TestZIncrBy(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	if r := mustDo(t, cli, "ZINCRBY", "z", "5", "a"); r != "5" {
+		t.Fatalf("ZINCRBY new = %v", r)
+	}
+	if r := mustDo(t, cli, "ZINCRBY", "z", "2.5", "a"); r != "7.5" {
+		t.Fatalf("ZINCRBY existing = %v", r)
+	}
+	if r := mustDo(t, cli, "ZSCORE", "z", "a"); r != "7.5" {
+		t.Fatalf("ZSCORE after ZINCRBY = %v", r)
+	}
+
+	// +inf then -inf on the same member yields NaN -> error
+	mustDo(t, cli, "ZINCRBY", "z", "inf", "big")
+	mustError(t, cli, "ZINCRBY", "z", "-inf", "big")
+	// a non-float or NaN increment is an error
+	mustError(t, cli, "ZINCRBY", "z", "notanum", "a")
+	mustError(t, cli, "ZINCRBY", "z", "nan", "a")
+	// WRONGTYPE and arity
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "ZINCRBY", "str", "1", "a")
+	mustError(t, cli, "ZINCRBY", "z", "1")
+}

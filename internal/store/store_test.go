@@ -708,3 +708,33 @@ func TestMSetNXConcurrent(t *testing.T) {
 		t.Fatalf("MSetNX torn write: %s=%q %s=%q, want one winner's mark on both", kx, vx, ky, vy)
 	}
 }
+
+func TestZIncrBy(t *testing.T) {
+	s := New()
+
+	// a new member on a missing key starts from 0
+	if sc, err := s.ZIncrBy("z", "a", 5); err != nil || sc != 5 {
+		t.Fatalf("ZIncrBy new = %v %v", sc, err)
+	}
+	if sc, err := s.ZIncrBy("z", "a", 2.5); err != nil || sc != 7.5 {
+		t.Fatalf("ZIncrBy existing = %v %v", sc, err)
+	}
+	if sc, _ := s.ZIncrBy("z", "a", -10); sc != -2.5 {
+		t.Fatalf("ZIncrBy negative = %v", sc)
+	}
+
+	// +inf plus -inf is NaN: error, and the score is left untouched
+	s.ZAdd("z", []ZMember{{Member: "big", Score: math.Inf(1)}})
+	if _, err := s.ZIncrBy("z", "big", math.Inf(-1)); err != ErrScoreNaN {
+		t.Fatalf("ZIncrBy NaN result = %v, want ErrScoreNaN", err)
+	}
+	if sc, _, _ := s.ZScore("z", "big"); !math.IsInf(sc, 1) {
+		t.Fatalf("ZIncrBy NaN modified the score = %v", sc)
+	}
+
+	// WRONGTYPE
+	s.Set("str", "v", SetOptions{})
+	if _, err := s.ZIncrBy("str", "a", 1); err != ErrWrongType {
+		t.Fatalf("ZIncrBy wrong type = %v", err)
+	}
+}

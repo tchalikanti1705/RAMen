@@ -92,7 +92,15 @@ LINSERT q BEFORE b Z   # insert Z before the first "b"; returns new length, or -
 
 ## Sorted sets
 
-`ZADD`, `ZREM`, `ZSCORE`, `ZCARD`, `ZRANGE [WITHSCORES]`, `ZRANGEBYSCORE [WITHSCORES]`.
+| Command | Description |
+|---|---|
+| `ZADD <key> <score> <member> [score member ...]` | Add or update members; returns the number newly added. |
+| `ZREM <key> <member ...>` | Remove members; returns the number removed. |
+| `ZSCORE <key> <member>` | The member's score, or nil. |
+| `ZINCRBY <key> <increment> <member>` | Add `increment` to the member's score (creating it); returns the new score. |
+| `ZCARD <key>` | Number of members. |
+| `ZRANGE <key> <start> <stop> [WITHSCORES]` | Members in the rank range, lowest score first. |
+| `ZRANGEBYSCORE <key> <min> <max> [WITHSCORES]` | Members with a score in `[min, max]`. |
 
 ```
 ZADD board 100 alice 250 bob
