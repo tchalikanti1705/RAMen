@@ -900,6 +900,15 @@ func TestZRank(t *testing.T) {
 		t.Fatalf("ZREVRANK c = %v", r)
 	}
 
+	// ties are broken lexicographically by member
+	mustDo(t, cli, "ZADD", "z2", "5", "y", "5", "x")
+	if r := mustDo(t, cli, "ZRANK", "z2", "x"); r != int64(0) {
+		t.Fatalf("ZRANK tie x = %v", r)
+	}
+	if r := mustDo(t, cli, "ZRANK", "z2", "y"); r != int64(1) {
+		t.Fatalf("ZRANK tie y = %v", r)
+	}
+
 	// missing member and missing key both return nil
 	if r, err := cli.Do("ZRANK", "z", "nope"); err != nil || r != nil {
 		t.Fatalf("ZRANK missing member = %v", r)
@@ -927,10 +936,14 @@ func TestZRevRange(t *testing.T) {
 	if len(r) != 3 || r[0] != "c" || r[1] != "b" || r[2] != "a" {
 		t.Fatalf("ZREVRANGE = %v", r)
 	}
-	// WITHSCORES interleaves member then score
+	// WITHSCORES interleaves member then score, for every element
 	r = mustDo(t, cli, "ZREVRANGE", "z", "0", "-1", "WITHSCORES").([]any)
-	if len(r) != 6 || r[0] != "c" || r[1] != "3" || r[2] != "b" || r[3] != "2" {
+	if len(r) != 6 || r[0] != "c" || r[1] != "3" || r[2] != "b" || r[3] != "2" || r[4] != "a" || r[5] != "1" {
 		t.Fatalf("ZREVRANGE WITHSCORES = %v", r)
+	}
+	// negative indices count from the end
+	if r := mustDo(t, cli, "ZREVRANGE", "z", "-2", "-1").([]any); len(r) != 2 || r[0] != "b" || r[1] != "a" {
+		t.Fatalf("ZREVRANGE -2 -1 = %v", r)
 	}
 	// missing key -> empty
 	if r := mustDo(t, cli, "ZREVRANGE", "nokey", "0", "-1").([]any); len(r) != 0 {
@@ -966,6 +979,10 @@ func TestZCount(t *testing.T) {
 	}
 	if r := mustDo(t, cli, "ZCOUNT", "z", "(2", "(3"); r != int64(0) {
 		t.Fatalf("ZCOUNT (2 (3 = %v", r)
+	}
+	// exclusive infinities still cover every finite score
+	if r := mustDo(t, cli, "ZCOUNT", "z", "(-inf", "(+inf"); r != int64(4) {
+		t.Fatalf("ZCOUNT (-inf (+inf = %v", r)
 	}
 	// missing key -> 0
 	if r := mustDo(t, cli, "ZCOUNT", "nokey", "-inf", "+inf"); r != int64(0) {
