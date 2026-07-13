@@ -748,6 +748,9 @@ func TestSetAlgebra(t *testing.T) {
 	check("SInter ab", r, err, "2", "3")
 	r, err = s.SInter([]string{"a", "nope"}) // missing key -> empty
 	check("SInter missing", r, err)
+	s.SAdd("disjoint", "9")
+	r, err = s.SInter([]string{"a", "disjoint"}) // non-empty but no overlap -> empty
+	check("SInter disjoint", r, err)
 	r, err = s.SInter([]string{"a"}) // single key -> the set itself
 	check("SInter single", r, err, "1", "2", "3")
 

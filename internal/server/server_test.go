@@ -896,9 +896,16 @@ func TestSetAlgebra(t *testing.T) {
 		t.Fatalf("SUNION with missing key = %v", r)
 	}
 
-	// WRONGTYPE and arity
+	// single-key forms return the set itself
+	if r := mustDo(t, cli, "SUNION", "a"); !sameReply(r, "1", "2", "3") {
+		t.Fatalf("SUNION single = %v", r)
+	}
+
+	// WRONGTYPE and arity for every op
 	mustDo(t, cli, "SET", "str", "v")
 	mustError(t, cli, "SINTER", "a", "str")
+	mustError(t, cli, "SUNION", "a", "str")
+	mustError(t, cli, "SDIFF", "a", "str")
 	mustError(t, cli, "SINTER")
 	mustError(t, cli, "SUNION")
 	mustError(t, cli, "SDIFF")
@@ -930,9 +937,9 @@ func TestSetPopRandom(t *testing.T) {
 	if r := mustDo(t, cli, "SCARD", "s"); r != int64(4) {
 		t.Fatalf("SRANDMEMBER modified the set = %v", r)
 	}
-	// count form is an array
-	if arr := mustDo(t, cli, "SRANDMEMBER", "s", "3").([]any); len(arr) != 3 {
-		t.Fatalf("SRANDMEMBER 3 = %v", arr)
+	// count form is an array of distinct members
+	if arr := mustDo(t, cli, "SRANDMEMBER", "s", "3").([]any); len(arr) != 3 || replyHasDup(arr) {
+		t.Fatalf("SRANDMEMBER 3 = %v, want 3 distinct", arr)
 	}
 	// negative count returns exactly |count| members
 	if arr := mustDo(t, cli, "SRANDMEMBER", "s", "-6").([]any); len(arr) != 6 {
@@ -952,13 +959,38 @@ func TestSetPopRandom(t *testing.T) {
 		t.Fatalf("SPOP 2 = %v", arr)
 	}
 
+	// SPOP with count 0 removes nothing and leaves the set
+	mustDo(t, cli, "SADD", "z0", "m")
+	if arr := mustDo(t, cli, "SPOP", "z0", "0").([]any); len(arr) != 0 {
+		t.Fatalf("SPOP 0 = %v, want empty", arr)
+	}
+	if r := mustDo(t, cli, "SCARD", "z0"); r != int64(1) {
+		t.Fatalf("SPOP 0 modified the set = %v", r)
+	}
+
 	// errors
 	mustError(t, cli, "SPOP", "s", "-1")                 // negative count
 	mustError(t, cli, "SPOP", "s", "notanint")           // bad count
+	mustError(t, cli, "SRANDMEMBER", "s", "notanint")    // bad count
 	mustError(t, cli, "SRANDMEMBER", "s", "-9999999999") // magnitude too large
 	mustDo(t, cli, "SET", "str", "v")
-	mustError(t, cli, "SPOP", "str")        // WRONGTYPE
-	mustError(t, cli, "SRANDMEMBER", "str") // WRONGTYPE
-	mustError(t, cli, "SPOP")               // arity
-	mustError(t, cli, "SPOP", "s", "1", "extra")
+	mustError(t, cli, "SPOP", "str")             // WRONGTYPE
+	mustError(t, cli, "SRANDMEMBER", "str")      // WRONGTYPE
+	mustError(t, cli, "SPOP")                    // arity
+	mustError(t, cli, "SPOP", "s", "1", "extra") // arity
+	mustError(t, cli, "SRANDMEMBER")             // arity
+	mustError(t, cli, "SRANDMEMBER", "s", "1", "extra")
+}
+
+// replyHasDup reports whether an array reply contains a duplicate string.
+func replyHasDup(arr []any) bool {
+	seen := make(map[string]bool, len(arr))
+	for _, e := range arr {
+		s, _ := e.(string)
+		if seen[s] {
+			return true
+		}
+		seen[s] = true
+	}
+	return false
 }
