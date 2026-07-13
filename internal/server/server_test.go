@@ -936,3 +936,38 @@ func TestZRevRange(t *testing.T) {
 	mustError(t, cli, "ZREVRANGE", "str", "0", "-1")
 	mustError(t, cli, "ZREVRANGE", "z", "0")
 }
+
+func TestZCount(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "ZADD", "z", "1", "a", "2", "b", "3", "c", "3", "d")
+
+	if r := mustDo(t, cli, "ZCOUNT", "z", "-inf", "+inf"); r != int64(4) {
+		t.Fatalf("ZCOUNT -inf +inf = %v", r)
+	}
+	if r := mustDo(t, cli, "ZCOUNT", "z", "2", "3"); r != int64(3) {
+		t.Fatalf("ZCOUNT 2 3 = %v", r)
+	}
+	// exclusive bounds with the ( prefix
+	if r := mustDo(t, cli, "ZCOUNT", "z", "(2", "3"); r != int64(2) {
+		t.Fatalf("ZCOUNT (2 3 = %v", r)
+	}
+	if r := mustDo(t, cli, "ZCOUNT", "z", "2", "(3"); r != int64(1) {
+		t.Fatalf("ZCOUNT 2 (3 = %v", r)
+	}
+	if r := mustDo(t, cli, "ZCOUNT", "z", "(2", "(3"); r != int64(0) {
+		t.Fatalf("ZCOUNT (2 (3 = %v", r)
+	}
+	// missing key -> 0
+	if r := mustDo(t, cli, "ZCOUNT", "nokey", "-inf", "+inf"); r != int64(0) {
+		t.Fatalf("ZCOUNT missing = %v", r)
+	}
+
+	// errors
+	mustError(t, cli, "ZCOUNT", "z", "notafloat", "3")
+	mustError(t, cli, "ZCOUNT", "z", "nan", "3")
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "ZCOUNT", "str", "0", "10")
+	mustError(t, cli, "ZCOUNT", "z", "0")
+}

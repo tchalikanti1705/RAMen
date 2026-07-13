@@ -817,3 +817,39 @@ func TestZRevRange(t *testing.T) {
 		t.Fatalf("ZRevRange wrong type = %v", err)
 	}
 }
+
+func TestZCount(t *testing.T) {
+	s := New()
+	s.ZAdd("z", []ZMember{{"a", 1}, {"b", 2}, {"c", 3}, {"d", 3}})
+	negInf, posInf := math.Inf(-1), math.Inf(1)
+
+	cases := []struct {
+		label   string
+		min     float64
+		minExcl bool
+		max     float64
+		maxExcl bool
+		want    int
+	}{
+		{"-inf..+inf", negInf, false, posInf, false, 4},
+		{"[2,3]", 2, false, 3, false, 3}, // b, c, d
+		{"(2,3]", 2, true, 3, false, 2},  // c, d
+		{"[2,3)", 2, false, 3, true, 1},  // b
+		{"(2,3)", 2, true, 3, true, 0},
+		{"[5,10]", 5, false, 10, false, 0},
+		{"min>max", 3, false, 1, false, 0},
+	}
+	for _, tc := range cases {
+		if n, err := s.ZCount("z", tc.min, tc.minExcl, tc.max, tc.maxExcl); err != nil || n != tc.want {
+			t.Fatalf("ZCount %s = %d (err %v), want %d", tc.label, n, err, tc.want)
+		}
+	}
+
+	if n, _ := s.ZCount("nokey", negInf, false, posInf, false); n != 0 {
+		t.Fatalf("ZCount missing key = %d", n)
+	}
+	s.Set("str", "v", SetOptions{})
+	if _, err := s.ZCount("str", 0, false, 10, false); err != ErrWrongType {
+		t.Fatalf("ZCount wrong type = %v", err)
+	}
+}
