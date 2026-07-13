@@ -129,6 +129,27 @@ func (c *conn) cmdZRange(args []string) error {
 	return c.writeZMembers(members, withScores)
 }
 
+func (c *conn) cmdZRevRange(args []string) error {
+	// ZREVRANGE key start stop [WITHSCORES]
+	if len(args) != 4 && len(args) != 5 {
+		return c.wrongArgs("zrevrange")
+	}
+	start, err1 := strconv.Atoi(args[2])
+	stop, err2 := strconv.Atoi(args[3])
+	if err1 != nil || err2 != nil {
+		return c.writeError("ERR value is not an integer or out of range")
+	}
+	withScores := len(args) == 5 && strings.ToUpper(args[4]) == "WITHSCORES"
+	if len(args) == 5 && !withScores {
+		return c.writeError("ERR syntax error")
+	}
+	members, err := c.s.store.ZRevRange(args[1], start, stop)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeZMembers(members, withScores)
+}
+
 func (c *conn) cmdZRangeByScore(args []string) error {
 	// ZRANGEBYSCORE key min max [WITHSCORES]
 	if len(args) != 4 && len(args) != 5 {
