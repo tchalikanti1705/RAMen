@@ -769,6 +769,33 @@ func TestGetEx(t *testing.T) {
 		t.Fatalf("a failed GETEX changed k2 = %v", r)
 	}
 
+	// millisecond and future-absolute paths set a TTL rather than delete
+	mustDo(t, cli, "SET", "mp", "v")
+	if r := mustDo(t, cli, "GETEX", "mp", "PX", "100000"); r != "v" {
+		t.Fatalf("GETEX PX = %v", r)
+	}
+	if r := mustDo(t, cli, "PTTL", "mp").(int64); r <= 0 || r > 100000 {
+		t.Fatalf("GETEX PX PTTL = %v, want (0,100000]", r)
+	}
+	futureMs := strconv.FormatInt(time.Now().UnixMilli()+1_000_000, 10)
+	if r := mustDo(t, cli, "GETEX", "mp", "PXAT", futureMs); r != "v" {
+		t.Fatalf("GETEX PXAT future = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "mp").(int64); r <= 0 {
+		t.Fatalf("GETEX PXAT future did not set a TTL = %v", r)
+	}
+	futureSec := strconv.FormatInt(time.Now().Unix()+1000, 10)
+	mustDo(t, cli, "SET", "ea", "v")
+	if r := mustDo(t, cli, "GETEX", "ea", "EXAT", futureSec); r != "v" {
+		t.Fatalf("GETEX EXAT future = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "ea").(int64); r <= 0 {
+		t.Fatalf("GETEX EXAT future did not set a TTL = %v", r)
+	}
+
+	// at most one option
+	mustError(t, cli, "GETEX", "mp", "EX", "10", "PERSIST")
+
 	// WRONGTYPE
 	mustDo(t, cli, "RPUSH", "lst", "x")
 	mustError(t, cli, "GETEX", "lst")
@@ -795,6 +822,14 @@ func TestMSetNX(t *testing.T) {
 	}
 	if r := mustDo(t, cli, "GET", "a"); r != "1" {
 		t.Fatalf("MSETNX overwrote the existing key = %v", r)
+	}
+
+	// duplicate keys in one call: last value wins
+	if r := mustDo(t, cli, "MSETNX", "dup", "1", "dup", "2"); r != int64(1) {
+		t.Fatalf("MSETNX duplicate keys = %v, want 1", r)
+	}
+	if r := mustDo(t, cli, "GET", "dup"); r != "2" {
+		t.Fatalf("MSETNX duplicate last-wins = %v", r)
 	}
 
 	mustError(t, cli, "MSETNX", "k")            // no value for the key

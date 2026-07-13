@@ -4,6 +4,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -601,10 +603,14 @@ func TestGetEx(t *testing.T) {
 		t.Fatal("GetEx with a past deadline did not delete the key")
 	}
 
-	// a WRONGTYPE key errors and keeps its TTL untouched
+	// a WRONGTYPE key errors and its TTL is left untouched
 	s.push("lst", true, []string{"x"})
+	s.Expire("lst", 100*time.Second)
 	if _, _, err := s.GetEx("lst", GetExOp{Mode: GetExPersist}); err != ErrWrongType {
 		t.Fatalf("GetEx wrong type = %v, want ErrWrongType", err)
+	}
+	if _, hasTTL, _ := s.ExpireTime("lst"); !hasTTL {
+		t.Fatal("GetEx on a WRONGTYPE key cleared its TTL")
 	}
 }
 
@@ -660,5 +666,45 @@ func TestMSetNX(t *testing.T) {
 	}
 	if v, _, _ := s.Get("h"); v != "second" {
 		t.Fatalf("MSetNX duplicate key = %q, want second (last wins)", v)
+	}
+}
+
+func TestMSetNXConcurrent(t *testing.T) {
+	s := New()
+	// Two keys on different shards, so every MSetNX locks two shards. Goroutines
+	// race to claim the pair in opposite key orders: a wrong lock order would
+	// deadlock this test, and -race flags any unsafe shard-map access. Exactly
+	// one goroutine wins (all-or-nothing) and both keys carry that winner's mark.
+	kx, ky := "mx", "my"
+	for i := 0; s.shardFor(kx) == s.shardFor(ky); i++ {
+		ky = "my" + strconv.Itoa(i)
+	}
+
+	const g = 32
+	var winners int64
+	var wg sync.WaitGroup
+	for i := 0; i < g; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			mark := strconv.Itoa(id)
+			keys := []string{kx, ky}
+			if id%2 == 1 {
+				keys = []string{ky, kx} // reversed order to stress lock ordering
+			}
+			if s.MSetNX(keys, []string{mark, mark}) {
+				atomic.AddInt64(&winners, 1)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if winners != 1 {
+		t.Fatalf("MSetNX winners = %d, want exactly 1 (all-or-nothing under races)", winners)
+	}
+	vx, _, _ := s.Get(kx)
+	vy, _, _ := s.Get(ky)
+	if vx == "" || vx != vy {
+		t.Fatalf("MSetNX torn write: %s=%q %s=%q, want one winner's mark on both", kx, vx, ky, vy)
 	}
 }
