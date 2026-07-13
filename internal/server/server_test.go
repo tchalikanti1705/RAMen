@@ -726,6 +726,16 @@ func TestGetEx(t *testing.T) {
 		t.Fatalf("GETEX with no option set a TTL = %v", r)
 	}
 
+	// no option must PRESERVE an existing TTL, not clear it like PERSIST does
+	mustDo(t, cli, "SET", "kt", "v")
+	mustDo(t, cli, "EXPIRE", "kt", "100")
+	if r := mustDo(t, cli, "GETEX", "kt"); r != "v" {
+		t.Fatalf("GETEX kt = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "kt").(int64); r <= 0 || r > 100 {
+		t.Fatalf("GETEX with no option changed an existing TTL = %v, want (0,100]", r)
+	}
+
 	// EX sets a TTL
 	if r := mustDo(t, cli, "GETEX", "k", "EX", "100"); r != "v" {
 		t.Fatalf("GETEX EX = %v", r)
@@ -753,6 +763,7 @@ func TestGetEx(t *testing.T) {
 	mustError(t, cli, "GETEX", "k2", "EX", "0")                     // non-positive TTL
 	mustError(t, cli, "GETEX", "k2", "EX", "notanint")              // bad TTL
 	mustError(t, cli, "GETEX", "k2", "EX", "10000000000")           // TTL overflows time.Duration
+	mustError(t, cli, "GETEX", "k2", "PX", "9999999999999")         // ms TTL overflows time.Duration
 	mustError(t, cli, "GETEX", "k2", "EXAT", "9223372036854775807") // absolute ts overflow
 	// a non-positive absolute expire must error and leave the key untouched;
 	// unlike EXPIREAT, GETEX rejects EXAT/PXAT <= 0 rather than deleting the key
