@@ -522,3 +522,30 @@ func TestListInsert(t *testing.T) {
 		t.Fatalf("LInsert wrong type = %v", err)
 	}
 }
+
+func TestGetDel(t *testing.T) {
+	s := New()
+
+	// missing key: not found, nothing deleted
+	if _, ok, err := s.GetDel("nope"); ok || err != nil {
+		t.Fatalf("GetDel missing = ok=%v err=%v", ok, err)
+	}
+
+	// get-and-delete
+	s.Set("k", "v", SetOptions{})
+	if v, ok, err := s.GetDel("k"); err != nil || !ok || v != "v" {
+		t.Fatalf("GetDel = %q ok=%v err=%v", v, ok, err)
+	}
+	if s.Exists("k") != 0 {
+		t.Fatal("GetDel did not delete the key")
+	}
+
+	// a WRONGTYPE key errors and is left in place
+	s.push("lst", true, []string{"x"})
+	if _, _, err := s.GetDel("lst"); err != ErrWrongType {
+		t.Fatalf("GetDel wrong type = %v, want ErrWrongType", err)
+	}
+	if s.Exists("lst") != 1 {
+		t.Fatal("GetDel deleted a WRONGTYPE key")
+	}
+}

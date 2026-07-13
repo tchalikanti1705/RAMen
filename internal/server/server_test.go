@@ -678,3 +678,31 @@ func TestSetEx(t *testing.T) {
 	mustError(t, cli, "SETEX", "k", "10")
 	mustError(t, cli, "PSETEX", "k", "10")
 }
+
+func TestGetDel(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// missing key returns nil
+	if r, err := cli.Do("GETDEL", "nope"); err != nil || r != nil {
+		t.Fatalf("GETDEL missing = %v (err %v), want nil", r, err)
+	}
+
+	mustDo(t, cli, "SET", "k", "v")
+	if r := mustDo(t, cli, "GETDEL", "k"); r != "v" {
+		t.Fatalf("GETDEL = %v", r)
+	}
+	if r := mustDo(t, cli, "EXISTS", "k"); r != int64(0) {
+		t.Fatalf("GETDEL did not delete the key = %v", r)
+	}
+
+	// WRONGTYPE key errors and stays
+	mustDo(t, cli, "RPUSH", "lst", "x")
+	mustError(t, cli, "GETDEL", "lst")
+	if r := mustDo(t, cli, "EXISTS", "lst"); r != int64(1) {
+		t.Fatalf("GETDEL deleted a WRONGTYPE key = %v", r)
+	}
+
+	mustError(t, cli, "GETDEL")           // arity
+	mustError(t, cli, "GETDEL", "a", "b") // arity
+}

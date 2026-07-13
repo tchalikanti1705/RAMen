@@ -45,6 +45,7 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 | `SETEX <key> <seconds> <value>` | Set with a TTL in seconds; rejects a non-positive TTL. |
 | `PSETEX <key> <ms> <value>` | Set with a TTL in milliseconds; rejects a non-positive TTL. |
 | `GET <key>` | Get a string. |
+| `GETDEL <key>` | Get the value and delete the key atomically; nil if missing. |
 | `GETSET <key> <value>` | Set and return the old value. |
 | `APPEND <key> <value>` | Append; returns new length. |
 | `STRLEN <key>` | Length of the string in bytes; `0` if missing. |
