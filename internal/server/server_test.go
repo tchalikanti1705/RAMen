@@ -862,9 +862,17 @@ func TestZIncrBy(t *testing.T) {
 		t.Fatalf("ZSCORE after ZINCRBY = %v", r)
 	}
 
-	// +inf then -inf on the same member yields NaN -> error
-	mustDo(t, cli, "ZINCRBY", "z", "inf", "big")
-	mustError(t, cli, "ZINCRBY", "z", "-inf", "big")
+	// an infinite score renders as Redis's "inf"/"-inf", not Go's "+Inf"
+	if r := mustDo(t, cli, "ZINCRBY", "z", "inf", "big"); r != "inf" {
+		t.Fatalf("ZINCRBY inf = %v, want inf", r)
+	}
+	// +inf then -inf on the same member is NaN -> error, and the score is kept
+	if e := mustError(t, cli, "ZINCRBY", "z", "-inf", "big"); e.Error() != "ERR resulting score is not a number (NaN)" {
+		t.Fatalf("ZINCRBY NaN error = %q", e.Error())
+	}
+	if r := mustDo(t, cli, "ZSCORE", "z", "big"); r != "inf" {
+		t.Fatalf("ZINCRBY NaN changed the score = %v", r)
+	}
 	// a non-float or NaN increment is an error
 	mustError(t, cli, "ZINCRBY", "z", "notanum", "a")
 	mustError(t, cli, "ZINCRBY", "z", "nan", "a")

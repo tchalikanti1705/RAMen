@@ -245,5 +245,13 @@ func parseScoreBound(s string) (float64, error) {
 }
 
 func formatFloat(f float64) string {
+	switch {
+	case math.IsInf(f, 1):
+		return "inf"
+	case math.IsInf(f, -1):
+		return "-inf"
+	case f == 0:
+		return "0" // normalize -0 to 0, like Redis
+	}
 	return strconv.FormatFloat(f, 'g', -1, 64)
 }
