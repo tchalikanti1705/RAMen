@@ -272,6 +272,22 @@ func (c *conn) cmdMSet(args []string) error {
 	return c.writeSimple("OK")
 }
 
+// cmdMSetNX sets all key/value pairs only if none of the keys already exist,
+// returning 1 on write and 0 (writing nothing) if any key is already present.
+func (c *conn) cmdMSetNX(args []string) error {
+	if len(args) < 3 || len(args)%2 != 1 {
+		return c.wrongArgs("msetnx")
+	}
+	n := (len(args) - 1) / 2
+	keys := make([]string, n)
+	vals := make([]string, n)
+	for i := 0; i < n; i++ {
+		keys[i] = args[1+2*i]
+		vals[i] = args[2+2*i]
+	}
+	return c.writeInt(boolToInt(c.s.store.MSetNX(keys, vals)))
+}
+
 func (c *conn) cmdStrLen(args []string) error {
 	if len(args) != 2 {
 		return c.wrongArgs("strlen")

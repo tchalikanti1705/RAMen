@@ -62,6 +62,7 @@ func (s *Server) registerCommands() {
 		"INCRBYFLOAT": (*conn).cmdIncrByFloat,
 		"MGET":        (*conn).cmdMGet,
 		"MSET":        (*conn).cmdMSet,
+		"MSETNX":      (*conn).cmdMSetNX,
 
 		// hashes
 		"HSET":         (*conn).cmdHSet,
