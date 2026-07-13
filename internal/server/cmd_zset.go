@@ -171,6 +171,47 @@ func (c *conn) cmdZRangeByScore(args []string) error {
 	return c.writeZMembers(members, withScores)
 }
 
+// cmdZCount implements ZCOUNT key min max, where min/max are score bounds that
+// may be exclusive ("(") or infinite ("-inf"/"+inf").
+func (c *conn) cmdZCount(args []string) error {
+	if len(args) != 4 {
+		return c.wrongArgs("zcount")
+	}
+	min, minExcl, err1 := parseRangeBound(args[2])
+	max, maxExcl, err2 := parseRangeBound(args[3])
+	if err1 != nil || err2 != nil {
+		return c.writeError("ERR min or max is not a float")
+	}
+	n, err := c.s.store.ZCount(args[1], min, minExcl, max, maxExcl)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeInt(int64(n))
+}
+
+// parseRangeBound parses a ZCOUNT score bound: a leading "(" makes it exclusive,
+// and "-inf"/"+inf"/"inf" map to the real infinities. A NaN bound is rejected.
+func parseRangeBound(s string) (val float64, exclusive bool, err error) {
+	if strings.HasPrefix(s, "(") {
+		exclusive = true
+		s = s[1:]
+	}
+	switch strings.ToLower(s) {
+	case "-inf":
+		return math.Inf(-1), exclusive, nil
+	case "+inf", "inf":
+		return math.Inf(1), exclusive, nil
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false, err
+	}
+	if math.IsNaN(v) {
+		return 0, false, strconv.ErrSyntax
+	}
+	return v, exclusive, nil
+}
+
 // writeZMembers writes a flat array of members, interleaving scores when
 // withScores is set (Redis layout: m1, s1, m2, s2, ...).
 func (c *conn) writeZMembers(members []store.ZMember, withScores bool) error {
