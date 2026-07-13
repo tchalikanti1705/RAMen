@@ -276,3 +276,34 @@ func (s *Store) ZRangeByScore(key string, min, max float64) ([]ZMember, error) {
 	}
 	return out, nil
 }
+
+// ZCount returns how many members have a score within the given bounds. minExcl
+// and maxExcl make the corresponding bound exclusive rather than inclusive.
+func (s *Store) ZCount(key string, min float64, minExcl bool, max float64, maxExcl bool) (int, error) {
+	sh := s.shardFor(key)
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	e, found := sh.peekLive(key, s.now())
+	if !found {
+		return 0, nil
+	}
+	z, err := asZSet(e)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, sc := range z.scores {
+		aboveMin := sc >= min
+		if minExcl {
+			aboveMin = sc > min
+		}
+		belowMax := sc <= max
+		if maxExcl {
+			belowMax = sc < max
+		}
+		if aboveMin && belowMax {
+			count++
+		}
+	}
+	return count, nil
+}
