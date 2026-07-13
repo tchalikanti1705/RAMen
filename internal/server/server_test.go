@@ -903,3 +903,62 @@ func TestSetAlgebra(t *testing.T) {
 	mustError(t, cli, "SUNION")
 	mustError(t, cli, "SDIFF")
 }
+
+func TestSetPopRandom(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	members := map[string]bool{"a": true, "b": true, "c": true, "d": true}
+
+	// missing key: no-count form is nil, count form is an empty array
+	if r, err := cli.Do("SPOP", "nope"); err != nil || r != nil {
+		t.Fatalf("SPOP missing = %v", r)
+	}
+	if r, err := cli.Do("SRANDMEMBER", "nope"); err != nil || r != nil {
+		t.Fatalf("SRANDMEMBER missing = %v", r)
+	}
+	if r := mustDo(t, cli, "SPOP", "nope", "2"); !sameReply(r) {
+		t.Fatalf("SPOP missing count = %v, want empty array", r)
+	}
+
+	mustDo(t, cli, "SADD", "s", "a", "b", "c", "d")
+
+	// SRANDMEMBER no count -> a single member (bulk), set unchanged
+	if r := mustDo(t, cli, "SRANDMEMBER", "s"); !members[r.(string)] {
+		t.Fatalf("SRANDMEMBER = %v", r)
+	}
+	if r := mustDo(t, cli, "SCARD", "s"); r != int64(4) {
+		t.Fatalf("SRANDMEMBER modified the set = %v", r)
+	}
+	// count form is an array
+	if arr := mustDo(t, cli, "SRANDMEMBER", "s", "3").([]any); len(arr) != 3 {
+		t.Fatalf("SRANDMEMBER 3 = %v", arr)
+	}
+	// negative count returns exactly |count| members
+	if arr := mustDo(t, cli, "SRANDMEMBER", "s", "-6").([]any); len(arr) != 6 {
+		t.Fatalf("SRANDMEMBER -6 = %d, want 6", len(arr))
+	}
+
+	// SPOP no count removes one member
+	before := mustDo(t, cli, "SCARD", "s").(int64)
+	if r := mustDo(t, cli, "SPOP", "s"); !members[r.(string)] {
+		t.Fatalf("SPOP = %v", r)
+	}
+	if after := mustDo(t, cli, "SCARD", "s").(int64); after != before-1 {
+		t.Fatalf("SPOP removed the wrong count: before=%d after=%d", before, after)
+	}
+	// SPOP count form is an array
+	if arr := mustDo(t, cli, "SPOP", "s", "2").([]any); len(arr) != 2 {
+		t.Fatalf("SPOP 2 = %v", arr)
+	}
+
+	// errors
+	mustError(t, cli, "SPOP", "s", "-1")                 // negative count
+	mustError(t, cli, "SPOP", "s", "notanint")           // bad count
+	mustError(t, cli, "SRANDMEMBER", "s", "-9999999999") // magnitude too large
+	mustDo(t, cli, "SET", "str", "v")
+	mustError(t, cli, "SPOP", "str")        // WRONGTYPE
+	mustError(t, cli, "SRANDMEMBER", "str") // WRONGTYPE
+	mustError(t, cli, "SPOP")               // arity
+	mustError(t, cli, "SPOP", "s", "1", "extra")
+}
