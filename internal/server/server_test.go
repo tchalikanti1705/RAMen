@@ -852,8 +852,9 @@ func TestRename(t *testing.T) {
 	cli, cleanup := startTestServer(t)
 	defer cleanup()
 
-	// a missing source is an error
+	// a missing source is an error, even renaming it onto itself
 	mustError(t, cli, "RENAME", "nope", "dst")
+	mustError(t, cli, "RENAME", "ghost", "ghost")
 
 	// basic rename returns OK and moves the value
 	mustDo(t, cli, "SET", "a", "1")
@@ -898,7 +899,8 @@ func TestRenameNX(t *testing.T) {
 	cli, cleanup := startTestServer(t)
 	defer cleanup()
 
-	mustError(t, cli, "RENAMENX", "nope", "dst") // missing source
+	mustError(t, cli, "RENAMENX", "nope", "dst")    // missing source
+	mustError(t, cli, "RENAMENX", "ghost", "ghost") // missing source, even self->self
 
 	// destination free: renames and reports 1
 	mustDo(t, cli, "SET", "a", "1")

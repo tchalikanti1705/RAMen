@@ -716,6 +716,12 @@ func TestRename(t *testing.T) {
 		t.Fatalf("Rename missing src = %v, want ErrNoSuchKey", err)
 	}
 
+	// a missing source errors even when src == dst: the miss must win over the
+	// self-rename short-circuit
+	if err := s.Rename("ghost", "ghost"); err != ErrNoSuchKey {
+		t.Fatalf("Rename missing self = %v, want ErrNoSuchKey", err)
+	}
+
 	// basic move: value follows, source disappears
 	s.Set("a", "1", SetOptions{})
 	if err := s.Rename("a", "b"); err != nil {
@@ -790,6 +796,11 @@ func TestRenameNX(t *testing.T) {
 
 	if _, err := s.RenameNX("nope", "dst"); err != ErrNoSuchKey {
 		t.Fatalf("RenameNX missing src = %v, want ErrNoSuchKey", err)
+	}
+
+	// a missing source errors even when src == dst
+	if _, err := s.RenameNX("ghost", "ghost"); err != ErrNoSuchKey {
+		t.Fatalf("RenameNX missing self = %v, want ErrNoSuchKey", err)
 	}
 
 	// destination free: renames, reports true, TTL travels
@@ -889,7 +900,8 @@ func TestRandomKey(t *testing.T) {
 		t.Fatalf("RandomKey single = %q ok=%v", k, ok)
 	}
 
-	// across a large keyspace every result is a live member of the set
+	// across a large keyspace every result is a live member of the set; the
+	// distribution is intentionally not asserted (RANDOMKEY is best-effort)
 	want := map[string]bool{"only": true}
 	for i := 0; i < 1000; i++ {
 		k := "k" + strconv.Itoa(i)
