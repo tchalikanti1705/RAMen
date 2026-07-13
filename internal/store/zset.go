@@ -229,6 +229,31 @@ func (s *Store) ZRange(key string, start, stop int) ([]ZMember, error) {
 	return sorted[start : stop+1], nil
 }
 
+// ZRevRange returns members in the inclusive rank range [start, stop] ordered by
+// score DESCENDING (negative indices count from the end).
+func (s *Store) ZRevRange(key string, start, stop int) ([]ZMember, error) {
+	sh := s.shardFor(key)
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	e, found := sh.peekLive(key, s.now())
+	if !found {
+		return nil, nil
+	}
+	z, err := asZSet(e)
+	if err != nil {
+		return nil, err
+	}
+	sorted := z.sortedMembers()
+	for i, j := 0, len(sorted)-1; i < j; i, j = i+1, j-1 {
+		sorted[i], sorted[j] = sorted[j], sorted[i]
+	}
+	start, stop = normalizeRange(start, stop, len(sorted))
+	if start > stop {
+		return []ZMember{}, nil
+	}
+	return sorted[start : stop+1], nil
+}
+
 // ZRangeByScore returns members whose score lies in [min, max] inclusive,
 // ordered by score.
 func (s *Store) ZRangeByScore(key string, min, max float64) ([]ZMember, error) {
