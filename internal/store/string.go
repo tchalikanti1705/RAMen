@@ -84,6 +84,45 @@ func (s *Store) Set(key, val string, opts SetOptions) bool {
 	return true
 }
 
+// MSetNX sets every key to its paired value, but only if NONE of the keys
+// already exist. It is all-or-nothing (nothing is written when any key is
+// present) and reports whether the write happened. keys and vals must be the
+// same length.
+func (s *Store) MSetNX(keys, vals []string) bool {
+	// Lock every shard that hosts one of the keys, once each, in array-index
+	// order so concurrent multi-key writers acquire the shards in the same order
+	// and cannot deadlock.
+	shs := make([]*shard, len(keys))
+	involved := make(map[*shard]bool, len(keys))
+	for i, k := range keys {
+		shs[i] = s.shardFor(k)
+		involved[shs[i]] = true
+	}
+	for _, sh := range s.shards {
+		if involved[sh] {
+			sh.mu.Lock()
+		}
+	}
+	defer func() {
+		for _, sh := range s.shards {
+			if involved[sh] {
+				sh.mu.Unlock()
+			}
+		}
+	}()
+
+	now := s.now()
+	for i, k := range keys {
+		if _, exists := shs[i].peekLive(k, now); exists {
+			return false
+		}
+	}
+	for i, k := range keys {
+		shs[i].m[k] = &entry{val: vals[i]}
+	}
+	return true
+}
+
 // GetSet sets key to val and returns the previous string value.
 func (s *Store) GetSet(key, val string) (old string, hadOld bool, err error) {
 	sh := s.shardFor(key)
