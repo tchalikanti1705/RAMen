@@ -234,14 +234,20 @@ func (c *conn) writeZMembers(members []store.ZMember, withScores bool) error {
 	})
 }
 
+// parseScoreBound parses an inclusive ZRANGEBYSCORE bound. It shares the real
+// infinity handling and NaN rejection with parseRangeBound (so a "+inf" bound
+// actually matches +inf-scored members, and a genuine 1e308 score is not
+// mistaken for infinity) but rejects the "(" exclusive syntax, which the
+// inclusive-only ZRANGEBYSCORE store path does not yet support.
 func parseScoreBound(s string) (float64, error) {
-	switch strings.ToLower(s) {
-	case "-inf":
-		return -1e308, nil
-	case "+inf", "inf":
-		return 1e308, nil
+	v, exclusive, err := parseRangeBound(s)
+	if err != nil {
+		return 0, err
 	}
-	return strconv.ParseFloat(s, 64)
+	if exclusive {
+		return 0, strconv.ErrSyntax
+	}
+	return v, nil
 }
 
 func formatFloat(f float64) string {

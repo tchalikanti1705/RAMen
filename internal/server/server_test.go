@@ -996,3 +996,24 @@ func TestZCount(t *testing.T) {
 	mustError(t, cli, "ZCOUNT", "str", "0", "10")
 	mustError(t, cli, "ZCOUNT", "z", "0")
 }
+
+func TestZRangeByScoreInfinities(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "ZADD", "z", "-inf", "lo", "5", "mid", "+inf", "hi")
+
+	// -inf..+inf must INCLUDE the infinite-scored members. A "+inf" bound used
+	// to map to the 1e308 sentinel, which is < +inf, so "hi" was dropped.
+	r := mustDo(t, cli, "ZRANGEBYSCORE", "z", "-inf", "+inf").([]any)
+	if len(r) != 3 || r[0] != "lo" || r[1] != "mid" || r[2] != "hi" {
+		t.Fatalf("ZRANGEBYSCORE -inf +inf = %v, want lo mid hi", r)
+	}
+	// a real 1e308 is a finite bound, so the +inf-scored "hi" is above it.
+	r2 := mustDo(t, cli, "ZRANGEBYSCORE", "z", "5", "1e308").([]any)
+	if len(r2) != 1 || r2[0] != "mid" {
+		t.Fatalf("ZRANGEBYSCORE 5 1e308 = %v, want mid", r2)
+	}
+	// a NaN bound is rejected rather than silently matching nothing.
+	mustError(t, cli, "ZRANGEBYSCORE", "z", "nan", "1")
+}
