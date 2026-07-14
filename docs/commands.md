@@ -47,6 +47,7 @@ the returned cursor is `0` again.
 |---|---|
 | `SCAN <cursor> [MATCH pattern] [COUNT n]` | Iterate the keyspace one page at a time. |
 | `HSCAN <key> <cursor> [MATCH pattern] [COUNT n]` | Iterate a hash; elements are a flat `field, value, ...` list. `MATCH` filters on the field name. |
+| `SSCAN <key> <cursor> [MATCH pattern] [COUNT n]` | Iterate a set; elements are the members. `MATCH` filters on the member. |
 
 `MATCH` filters with the same glob syntax as `KEYS`. `COUNT` is a hint for how
 much work to do per call (default `10`), not the number of elements returned —

@@ -1071,3 +1071,53 @@ func TestHScan(t *testing.T) {
 	mustError(t, cli, "HSCAN", "h", "notanumber")
 	mustError(t, cli, "HSCAN", "h", "0", "COUNT", "0")
 }
+
+func TestSScan(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// Missing key: cursor 0, no elements.
+	if cursor, elems := scanReply(t, mustDo(t, cli, "SSCAN", "nope", "0")); cursor != "0" || len(elems) != 0 {
+		t.Fatalf("SSCAN missing = (%q, %v)", cursor, elems)
+	}
+
+	const n = 500
+	want := make(map[string]bool, n)
+	for i := 0; i < n; i++ {
+		m := "m:" + strconv.Itoa(i)
+		mustDo(t, cli, "SADD", "s", m)
+		want[m] = true
+	}
+
+	// A full scan returns every member exactly once, for any COUNT.
+	for _, count := range []int{0, 1, 13, 1000} {
+		got := scanCollect(t, cli, []string{"SSCAN", "s"}, "", count)
+		seen := make(map[string]bool, len(got))
+		for _, m := range got {
+			if seen[m] {
+				t.Fatalf("COUNT %d: member %q returned twice", count, m)
+			}
+			seen[m] = true
+		}
+		if len(seen) != n {
+			t.Fatalf("COUNT %d: got %d members, want %d", count, len(seen), n)
+		}
+		for m := range want {
+			if !seen[m] {
+				t.Fatalf("COUNT %d: member %q missed", count, m)
+			}
+		}
+	}
+
+	// MATCH filters on the member: "m:1?" matches m:10..m:19.
+	got := scanCollect(t, cli, []string{"SSCAN", "s"}, "m:1?", 0)
+	if len(got) != 10 {
+		t.Fatalf("SSCAN MATCH m:1? returned %d members, want 10: %v", len(got), got)
+	}
+
+	// Wrong type and arity are rejected.
+	mustDo(t, cli, "SET", "str", "x")
+	mustError(t, cli, "SSCAN", "str", "0")
+	mustError(t, cli, "SSCAN", "s")
+	mustError(t, cli, "SSCAN", "s", "notanumber")
+}
