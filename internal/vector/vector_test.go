@@ -1,7 +1,9 @@
 package vector
 
 import (
+	"math"
 	"math/rand"
+	"sort"
 	"strconv"
 	"testing"
 )
@@ -34,6 +36,60 @@ func TestDimMismatch(t *testing.T) {
 	c.Set("a", []float32{1, 2, 3}, "")
 	if err := c.Set("b", []float32{1, 2}, ""); err != ErrDimMismatch {
 		t.Fatalf("want ErrDimMismatch, got %v", err)
+	}
+}
+
+// bruteCosine recomputes cosine similarity from scratch, independent of the
+// collection's cached norms, so it can serve as the ranking oracle.
+func bruteCosine(a, b []float32) float64 {
+	var dot, na, nb float64
+	for i := range a {
+		av, bv := float64(a[i]), float64(b[i])
+		dot += av * bv
+		na += av * av
+		nb += bv * bv
+	}
+	if na == 0 || nb == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(na) * math.Sqrt(nb))
+}
+
+// TestSearchMatchesBruteForce proves the min-heap selection and cached-norm
+// scoring return exactly the same top-k, in the same order, as a from-scratch
+// cosine ranking. The optimisation must cost zero recall.
+func TestSearchMatchesBruteForce(t *testing.T) {
+	const n, dim, k = 500, 64, 10
+	c, query := randVectors(n, dim)
+
+	got, err := c.Search(query, k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != k {
+		t.Fatalf("got %d results, want %d", len(got), k)
+	}
+
+	type scored struct {
+		id    string
+		score float64
+	}
+	oracle := make([]scored, 0, n)
+	for _, it := range c.Items() {
+		oracle = append(oracle, scored{it.ID, bruteCosine(query, it.Vec)})
+	}
+	sort.Slice(oracle, func(i, j int) bool { return oracle[i].score > oracle[j].score })
+
+	for i := 0; i < k; i++ {
+		if got[i].Item.ID != oracle[i].id {
+			t.Fatalf("rank %d: got %q (%.6f), want %q (%.6f)", i, got[i].Item.ID, got[i].Score, oracle[i].id, oracle[i].score)
+		}
+		if math.Abs(got[i].Score-oracle[i].score) > 1e-9 {
+			t.Fatalf("rank %d score %.12f vs oracle %.12f", i, got[i].Score, oracle[i].score)
+		}
+		if i > 0 && got[i].Score > got[i-1].Score {
+			t.Fatalf("results not in descending order at rank %d", i)
+		}
 	}
 }
 
