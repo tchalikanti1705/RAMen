@@ -91,6 +91,38 @@ func (s *Store) Scan(cursor uint64, match string, count int) (uint64, []string) 
 // matching Redis' default of 10.
 const defaultScanCount = 10
 
+// HScan iterates the fields of the hash at key, returning a page of matching
+// field/value pairs as a flat [field, value, ...] slice plus the next cursor. A
+// missing key yields cursor 0 and no elements; a key of the wrong type returns
+// ErrWrongType. Like SCAN, MATCH is applied (to the field name) after the count
+// window is taken, so a page can be empty with a non-zero cursor.
+func (s *Store) HScan(key string, cursor uint64, match string, count int) (uint64, []string, error) {
+	sh := s.shardFor(key)
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	e, found := sh.peekLive(key, s.now())
+	if !found {
+		return 0, nil, nil
+	}
+	h, err := asHash(e)
+	if err != nil {
+		return 0, nil, err
+	}
+	fields := make([]string, 0, len(h))
+	for f := range h {
+		fields = append(fields, f)
+	}
+	sort.Strings(fields)
+	next, window := scanWindow(fields, cursor, count)
+	out := make([]string, 0, len(window)*2)
+	for _, f := range window {
+		if match == "" || matchPattern(match, f) {
+			out = append(out, f, h[f])
+		}
+	}
+	return next, out, nil
+}
+
 // scanWindow walks a single sorted slice (the fields of a hash, members of a set
 // or sorted set) starting at cursor and returns up to count entries plus the
 // next cursor. The next cursor is 0 once the slice is exhausted, and an
