@@ -199,9 +199,12 @@ func scanWindow(sorted []string, cursor uint64, count int) (uint64, []string) {
 		return 0, nil
 	}
 	start := int(cursor)
-	end := start + count
-	if end >= len(sorted) {
+	// Compare against the remaining tail rather than computing start+count,
+	// which would overflow int (and then slice with a negative bound, panicking
+	// the whole server) when a client sends a huge COUNT.
+	if count >= len(sorted)-start {
 		return 0, sorted[start:]
 	}
+	end := start + count
 	return uint64(end), sorted[start:end]
 }
