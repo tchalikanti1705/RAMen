@@ -41,6 +41,7 @@ func (s *Server) registerCommands() {
 		"PERSIST":    (*conn).cmdPersist,
 		"KEYS":       (*conn).cmdKeys,
 		"TYPE":       (*conn).cmdType,
+		"SCAN":       (*conn).cmdScan,
 
 		// strings
 		"GET":         (*conn).cmdGet,
