@@ -20,6 +20,7 @@ type Item struct {
 	ID   string
 	Vec  []float32
 	Meta string
+	norm float64 // Euclidean norm of Vec, cached at insert time; not persisted
 }
 
 // Collection is a flat index of vectors that all share one dimension.
@@ -44,8 +45,18 @@ func (c *Collection) Set(id string, vec []float32, meta string) error {
 	}
 	cp := make([]float32, len(vec))
 	copy(cp, vec)
-	c.items[id] = &Item{ID: id, Vec: cp, Meta: meta}
+	c.items[id] = &Item{ID: id, Vec: cp, Meta: meta, norm: norm(cp)}
 	return nil
+}
+
+// norm returns the Euclidean norm (magnitude) of v.
+func norm(v []float32) float64 {
+	var sum float64
+	for _, x := range v {
+		f := float64(x)
+		sum += f * f
+	}
+	return math.Sqrt(sum)
 }
 
 // Del removes id; it reports whether the id existed.
