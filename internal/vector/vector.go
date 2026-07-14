@@ -83,9 +83,10 @@ func (c *Collection) Search(query []float32, k int) ([]Result, error) {
 	if c.Dim != 0 && len(query) != c.Dim {
 		return nil, ErrDimMismatch
 	}
+	qn := norm(query)
 	results := make([]Result, 0, len(c.items))
 	for _, it := range c.items {
-		results = append(results, Result{Item: it, Score: cosine(query, it.Vec)})
+		results = append(results, Result{Item: it, Score: cosineNorm(query, qn, it)})
 	}
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].Score > results[j].Score
@@ -96,6 +97,21 @@ func (c *Collection) Search(query []float32, k int) ([]Result, error) {
 	return results, nil
 }
 
+// cosineNorm is cosine similarity between query (with precomputed norm qn) and a
+// stored item whose norm is already cached. It only does the dot product in the
+// loop; the magnitudes are supplied, not recomputed. A zero-magnitude vector on
+// either side yields 0, matching the flat cosine helper.
+func cosineNorm(query []float32, qn float64, it *Item) float64 {
+	if qn == 0 || it.norm == 0 || len(query) != len(it.Vec) {
+		return 0
+	}
+	var dot float64
+	for i := range query {
+		dot += float64(query[i]) * float64(it.Vec[i])
+	}
+	return dot / (qn * it.norm)
+}
+
 // Items returns all stored items (used for snapshotting). The slice is freshly
 // allocated; callers may not mutate the underlying vectors.
 func (c *Collection) Items() []*Item {
@@ -104,23 +120,4 @@ func (c *Collection) Items() []*Item {
 		out = append(out, it)
 	}
 	return out
-}
-
-// cosine computes the cosine similarity of two equal-length vectors. A
-// zero-magnitude vector yields 0 (treated as maximally dissimilar).
-func cosine(a, b []float32) float64 {
-	if len(a) != len(b) {
-		return 0
-	}
-	var dot, na, nb float64
-	for i := range a {
-		av, bv := float64(a[i]), float64(b[i])
-		dot += av * bv
-		na += av * av
-		nb += bv * bv
-	}
-	if na == 0 || nb == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(na) * math.Sqrt(nb))
 }
