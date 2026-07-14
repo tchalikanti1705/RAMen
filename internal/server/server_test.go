@@ -1003,3 +1003,71 @@ func TestScan(t *testing.T) {
 		cursor = next
 	}
 }
+
+// flatToMap turns a flat [k, v, k, v, ...] scan page into a map, failing on an
+// odd length or a repeated key (a field/member must not appear twice in a scan
+// with no concurrent mutation).
+func flatToMap(t *testing.T, flat []string) map[string]string {
+	t.Helper()
+	if len(flat)%2 != 0 {
+		t.Fatalf("flat list has odd length %d: %v", len(flat), flat)
+	}
+	m := make(map[string]string, len(flat)/2)
+	for i := 0; i < len(flat); i += 2 {
+		if _, dup := m[flat[i]]; dup {
+			t.Fatalf("key %q returned twice: %v", flat[i], flat)
+		}
+		m[flat[i]] = flat[i+1]
+	}
+	return m
+}
+
+func TestHScan(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// Missing key: cursor 0, no elements.
+	if cursor, elems := scanReply(t, mustDo(t, cli, "HSCAN", "nope", "0")); cursor != "0" || len(elems) != 0 {
+		t.Fatalf("HSCAN missing = (%q, %v)", cursor, elems)
+	}
+
+	const n = 500
+	want := make(map[string]string, n)
+	for i := 0; i < n; i++ {
+		f := "f:" + strconv.Itoa(i)
+		v := "v:" + strconv.Itoa(i)
+		mustDo(t, cli, "HSET", "h", f, v)
+		want[f] = v
+	}
+
+	// A full scan returns every field/value pair exactly once, for any COUNT.
+	for _, count := range []int{0, 1, 13, 1000} {
+		got := flatToMap(t, scanCollect(t, cli, []string{"HSCAN", "h"}, "", count))
+		if len(got) != n {
+			t.Fatalf("COUNT %d: got %d pairs, want %d", count, len(got), n)
+		}
+		for f, v := range want {
+			if got[f] != v {
+				t.Fatalf("COUNT %d: field %q = %q, want %q", count, f, got[f], v)
+			}
+		}
+	}
+
+	// MATCH filters on the field name: "f:1?" matches f:10..f:19.
+	got := flatToMap(t, scanCollect(t, cli, []string{"HSCAN", "h"}, "f:1?", 0))
+	if len(got) != 10 {
+		t.Fatalf("HSCAN MATCH f:1? returned %d pairs, want 10: %v", len(got), got)
+	}
+	for f, v := range got {
+		if want[f] != v {
+			t.Fatalf("HSCAN MATCH returned unexpected pair %q=%q", f, v)
+		}
+	}
+
+	// Wrong type and arity are rejected.
+	mustDo(t, cli, "SET", "str", "x")
+	mustError(t, cli, "HSCAN", "str", "0")
+	mustError(t, cli, "HSCAN", "h")
+	mustError(t, cli, "HSCAN", "h", "notanumber")
+	mustError(t, cli, "HSCAN", "h", "0", "COUNT", "0")
+}
