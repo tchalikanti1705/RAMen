@@ -104,3 +104,19 @@ func (c *conn) cmdHScan(args []string) error {
 	}
 	return c.writeScanReply(next, pairs)
 }
+
+// cmdSScan implements SSCAN key cursor [MATCH pattern] [COUNT count].
+func (c *conn) cmdSScan(args []string) error {
+	if len(args) < 3 {
+		return c.wrongArgs("sscan")
+	}
+	opts, err := parseScanTail(args, 2)
+	if err != nil {
+		return c.writeError(err.Error())
+	}
+	next, members, err := c.s.store.SScan(args[1], opts.cursor, opts.match, opts.count)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeScanReply(next, members)
+}

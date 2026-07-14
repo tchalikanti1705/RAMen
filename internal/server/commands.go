@@ -99,6 +99,7 @@ func (s *Server) registerCommands() {
 		"SMEMBERS":  (*conn).cmdSMembers,
 		"SISMEMBER": (*conn).cmdSIsMember,
 		"SCARD":     (*conn).cmdSCard,
+		"SSCAN":     (*conn).cmdSScan,
 
 		// sorted sets
 		"ZADD":          (*conn).cmdZAdd,
