@@ -1064,6 +1064,12 @@ func TestHScan(t *testing.T) {
 		}
 	}
 
+	// MATCH filters on the field name, not the value: a value-shaped pattern
+	// matches nothing even though values look like "v:NN".
+	if got := scanCollect(t, cli, []string{"HSCAN", "h"}, "v:1?", 0); len(got) != 0 {
+		t.Fatalf("HSCAN MATCH v:1? matched values, got %v", got)
+	}
+
 	// Wrong type and arity are rejected.
 	mustDo(t, cli, "SET", "str", "x")
 	mustError(t, cli, "HSCAN", "str", "0")
@@ -1163,6 +1169,12 @@ func TestZScan(t *testing.T) {
 		}
 	}
 
+	// MATCH filters on the member, not the score: a score-shaped pattern
+	// matches nothing.
+	if got := scanCollect(t, cli, []string{"ZSCAN", "z"}, "1?", 0); len(got) != 0 {
+		t.Fatalf("ZSCAN MATCH 1? matched scores, got %v", got)
+	}
+
 	// Scores are formatted like ZSCORE, including fractional values.
 	mustDo(t, cli, "ZADD", "z2", "3.5", "half")
 	_, elems := scanReply(t, mustDo(t, cli, "ZSCAN", "z2", "0"))
@@ -1175,4 +1187,79 @@ func TestZScan(t *testing.T) {
 	mustError(t, cli, "ZSCAN", "str", "0")
 	mustError(t, cli, "ZSCAN", "z")
 	mustError(t, cli, "ZSCAN", "z", "notanumber")
+}
+
+// TestScanCrashResistance covers the hostile-input cases that must never panic
+// the whole server (there is no recover() anywhere): a COUNT so large that
+// start+count would overflow an int, and a cursor far past the end of the
+// collection. Both must return a valid reply and leave the server serving.
+func TestScanCrashResistance(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "HSET", "h", "a", "1", "b", "2")
+	mustDo(t, cli, "SADD", "s", "x", "y")
+	mustDo(t, cli, "ZADD", "z", "1", "p", "2", "q")
+
+	const huge = "9223372036854775807" // math.MaxInt64
+	const past = "999999999999999999"
+
+	// A huge COUNT starting mid-collection must return the tail and cursor 0,
+	// not overflow the slice bound and crash.
+	if cur, elems := scanReply(t, mustDo(t, cli, "HSCAN", "h", "1", "COUNT", huge)); cur != "0" || len(elems) != 2 {
+		t.Fatalf("HSCAN huge COUNT = (%q, %v)", cur, elems)
+	}
+	if cur, elems := scanReply(t, mustDo(t, cli, "SSCAN", "s", "1", "COUNT", huge)); cur != "0" || len(elems) != 1 {
+		t.Fatalf("SSCAN huge COUNT = (%q, %v)", cur, elems)
+	}
+	if cur, elems := scanReply(t, mustDo(t, cli, "ZSCAN", "z", "1", "COUNT", huge)); cur != "0" || len(elems) != 2 {
+		t.Fatalf("ZSCAN huge COUNT = (%q, %v)", cur, elems)
+	}
+
+	// An out-of-range cursor must terminate cleanly at 0 with no elements.
+	for _, cmd := range [][]string{{"HSCAN", "h"}, {"SSCAN", "s"}, {"ZSCAN", "z"}} {
+		args := append(append([]string{}, cmd...), past)
+		if cur, elems := scanReply(t, mustDo(t, cli, args...)); cur != "0" || len(elems) != 0 {
+			t.Fatalf("%v out-of-range cursor = (%q, %v)", cmd, cur, elems)
+		}
+	}
+
+	// The server is still responsive after all of the above.
+	if r := mustDo(t, cli, "PING"); r != "PONG" {
+		t.Fatalf("server unresponsive after hostile scans: %v", r)
+	}
+}
+
+// TestScanSkipsExpired verifies a scan never returns a key whose TTL has passed,
+// and that a typed scan of an expired collection is treated as a missing key.
+func TestScanSkipsExpired(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	mustDo(t, cli, "SET", "keep", "v")
+	mustDo(t, cli, "SET", "gone", "v", "PX", "20")
+	mustDo(t, cli, "HSET", "h", "f", "v")
+	mustDo(t, cli, "PEXPIRE", "h", "20")
+	time.Sleep(60 * time.Millisecond)
+
+	keys := scanCollect(t, cli, []string{"SCAN"}, "", 0)
+	for _, k := range keys {
+		if k == "gone" {
+			t.Fatalf("SCAN returned the expired key %q", k)
+		}
+	}
+	found := false
+	for _, k := range keys {
+		if k == "keep" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("SCAN dropped the live key: %v", keys)
+	}
+
+	// The expired hash scans like a missing key.
+	if cur, elems := scanReply(t, mustDo(t, cli, "HSCAN", "h", "0")); cur != "0" || len(elems) != 0 {
+		t.Fatalf("HSCAN of expired hash = (%q, %v)", cur, elems)
+	}
 }
