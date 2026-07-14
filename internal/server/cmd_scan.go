@@ -120,3 +120,24 @@ func (c *conn) cmdSScan(args []string) error {
 	}
 	return c.writeScanReply(next, members)
 }
+
+// cmdZScan implements ZSCAN key cursor [MATCH pattern] [COUNT count]. The
+// elements are a flat [member, score, ...] list, scores formatted like ZSCORE.
+func (c *conn) cmdZScan(args []string) error {
+	if len(args) < 3 {
+		return c.wrongArgs("zscan")
+	}
+	opts, err := parseScanTail(args, 2)
+	if err != nil {
+		return c.writeError(err.Error())
+	}
+	next, members, err := c.s.store.ZScan(args[1], opts.cursor, opts.match, opts.count)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	flat := make([]string, 0, len(members)*2)
+	for _, m := range members {
+		flat = append(flat, m.Member, formatFloat(m.Score))
+	}
+	return c.writeScanReply(next, flat)
+}
