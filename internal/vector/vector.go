@@ -5,9 +5,9 @@
 package vector
 
 import (
+	"container/heap"
 	"errors"
 	"math"
-	"sort"
 )
 
 // ErrDimMismatch is returned when a vector's length does not match the
@@ -83,18 +83,53 @@ func (c *Collection) Search(query []float32, k int) ([]Result, error) {
 	if c.Dim != 0 && len(query) != c.Dim {
 		return nil, ErrDimMismatch
 	}
+	n := len(c.items)
+	if n == 0 {
+		return []Result{}, nil
+	}
+	// k <= 0 or a k past the collection size both mean "return everything".
+	if k <= 0 || k > n {
+		k = n
+	}
 	qn := norm(query)
-	results := make([]Result, 0, len(c.items))
+	// Keep the k highest scores in a size-k min-heap: its root is the weakest of
+	// the current best, so evicting it is cheap. This is O(n log k) with no
+	// allocation proportional to the whole collection.
+	h := make(topK, 0, k)
 	for _, it := range c.items {
-		results = append(results, Result{Item: it, Score: cosineNorm(query, qn, it)})
+		s := cosineNorm(query, qn, it)
+		if len(h) < k {
+			heap.Push(&h, Result{Item: it, Score: s})
+		} else if s > h[0].Score {
+			h[0] = Result{Item: it, Score: s}
+			heap.Fix(&h, 0)
+		}
 	}
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Score > results[j].Score
-	})
-	if k > 0 && k < len(results) {
-		results = results[:k]
+	// Drain the heap into descending score order by popping the weakest to the
+	// tail each time.
+	out := make([]Result, len(h))
+	for i := len(out) - 1; i >= 0; i-- {
+		out[i] = heap.Pop(&h).(Result)
 	}
-	return results, nil
+	return out, nil
+}
+
+// topK is a min-heap of results ordered by ascending score, so the root is the
+// weakest of the current top-k candidates and the first to be evicted.
+type topK []Result
+
+func (h topK) Len() int           { return len(h) }
+func (h topK) Less(i, j int) bool { return h[i].Score < h[j].Score }
+func (h topK) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *topK) Push(x any) { *h = append(*h, x.(Result)) }
+
+func (h *topK) Pop() any {
+	old := *h
+	n := len(old)
+	it := old[n-1]
+	*h = old[:n-1]
+	return it
 }
 
 // cosineNorm is cosine similarity between query (with precomputed norm qn) and a
