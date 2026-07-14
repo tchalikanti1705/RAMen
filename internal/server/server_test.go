@@ -942,8 +942,7 @@ func TestScan(t *testing.T) {
 		}
 	}
 
-	// MATCH filters the results; only keys ending in a single digit 0-9 under
-	// the "key:" prefix that also match "key:1?" (10-19) should come back.
+	// MATCH filters the results: "key:1?" matches key:10..key:19.
 	got := scanCollect(t, cli, []string{"SCAN"}, "key:1?", 0)
 	if len(got) != 10 {
 		t.Fatalf("SCAN MATCH key:1? returned %d keys, want 10: %v", len(got), got)
@@ -954,11 +953,10 @@ func TestScan(t *testing.T) {
 		}
 	}
 
-	// The bug the maintainer flagged: MATCH is applied after COUNT keys are
-	// fetched, so a page can legitimately be empty with a non-zero cursor. A
-	// client that stops at the first empty page would truncate; it must loop
-	// until the cursor is 0. Assert both: at least one empty non-terminal page
-	// exists, and the full loop still finds nothing (the pattern matches no key).
+	// MATCH is applied after COUNT keys are fetched, so a page can be empty with
+	// a non-zero cursor. A client must loop until the cursor is 0, not stop at
+	// the first empty page. Assert an empty non-terminal page occurs and the full
+	// loop still matches nothing.
 	sawEmptyNonTerminal := false
 	cursor := "0"
 	for {
@@ -1189,10 +1187,9 @@ func TestZScan(t *testing.T) {
 	mustError(t, cli, "ZSCAN", "z", "notanumber")
 }
 
-// TestScanCrashResistance covers the hostile-input cases that must never panic
-// the whole server (there is no recover() anywhere): a COUNT so large that
-// start+count would overflow an int, and a cursor far past the end of the
-// collection. Both must return a valid reply and leave the server serving.
+// TestScanCrashResistance covers hostile inputs that must not panic the server:
+// a COUNT large enough to overflow the slice index, and a cursor past the end of
+// the collection. Both must return a valid reply and keep the server serving.
 func TestScanCrashResistance(t *testing.T) {
 	cli, cleanup := startTestServer(t)
 	defer cleanup()

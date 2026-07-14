@@ -5,31 +5,17 @@ import (
 	"time"
 )
 
-// Cursor iteration (SCAN and its typed variants).
+// Cursor iteration for SCAN and its typed variants.
 //
-// Go randomises map iteration order on every range, so the cursor cannot be a
-// count of "keys already seen": two calls with the same cursor would walk
-// different keys and both skip and duplicate. Instead we impose an order the
-// map does not give us by sorting keys, and the cursor encodes a position in
-// that order.
-//
-// For the keyspace SCAN the cursor packs two numbers into one integer: the
-// shard index (there are shardCount shards) in the low part and the offset into
-// that shard's sorted key slice in the high part:
-//
-//	cursor = offset*shardCount + shardIndex
-//
-// Cursor 0 therefore starts at shard 0, offset 0, and we return 0 once the last
-// shard is exhausted. The cursor stays a plain integer, which matters because
-// many clients parse it as one, and no per-connection server state is needed.
-//
-// The guarantee is weaker than a snapshot: keys added or deleted mid-iteration
-// shift the offsets, so a key present for the whole scan can be missed or
-// returned twice. Redis makes a similarly weak promise, and this is documented
-// in docs/commands.md.
+// Map order is not stable, so the cursor encodes a position in a sorted order
+// instead of a count of keys seen. For the keyspace SCAN it packs the shard
+// index and the offset into that shard's sorted keys as
+// cursor = offset*shardCount + shardIndex; cursor 0 both starts and ends the
+// scan. Keys added or removed mid-scan shift offsets, so a key can be missed or
+// returned twice (documented in docs/commands.md).
 
-// sortedLiveKeys returns the shard's live (non-expired) keys in sorted order. It
-// takes the shard read lock itself so a scan never holds a lock across shards.
+// sortedLiveKeys returns the shard's live keys sorted, taking the shard read
+// lock itself so a scan never holds a lock across shards.
 func (sh *shard) sortedLiveKeys(now time.Time) []string {
 	sh.mu.RLock()
 	keys := make([]string, 0, len(sh.m))
@@ -43,13 +29,11 @@ func (sh *shard) sortedLiveKeys(now time.Time) []string {
 	return keys
 }
 
-// Scan iterates the keyspace one page at a time. Starting from cursor (0 begins
-// a fresh iteration), it examines up to count keys, advancing across shards as
-// needed, and returns the keys in that window whose name matches the glob
-// pattern (an empty pattern matches everything) together with the next cursor.
-// The next cursor is 0 when iteration is complete. Because MATCH is applied only
-// after the count keys are fetched, a page can legitimately come back empty with
-// a non-zero cursor; callers must keep going until the cursor is 0.
+// Scan returns one page of the keyspace: starting from cursor, it examines up to
+// count keys across shards and returns those matching the glob pattern (empty
+// matches everything) plus the next cursor, which is 0 when done. MATCH is
+// applied after the count keys are fetched, so a page can be empty with a
+// non-zero cursor; callers loop until the cursor is 0.
 func (s *Store) Scan(cursor uint64, match string, count int) (uint64, []string) {
 	if count <= 0 {
 		count = defaultScanCount
@@ -87,15 +71,12 @@ func (s *Store) Scan(cursor uint64, match string, count int) (uint64, []string) 
 	return 0, out
 }
 
-// defaultScanCount is the COUNT hint used when the client does not supply one,
-// matching Redis' default of 10.
+// defaultScanCount is the COUNT hint used when the client supplies none.
 const defaultScanCount = 10
 
-// HScan iterates the fields of the hash at key, returning a page of matching
-// field/value pairs as a flat [field, value, ...] slice plus the next cursor. A
-// missing key yields cursor 0 and no elements; a key of the wrong type returns
-// ErrWrongType. Like SCAN, MATCH is applied (to the field name) after the count
-// window is taken, so a page can be empty with a non-zero cursor.
+// HScan returns one page of the hash at key as a flat [field, value, ...] slice
+// plus the next cursor, keeping only fields matching the pattern. A missing key
+// yields cursor 0 and no elements; a wrong-type key returns ErrWrongType.
 func (s *Store) HScan(key string, cursor uint64, match string, count int) (uint64, []string, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
@@ -123,9 +104,9 @@ func (s *Store) HScan(key string, cursor uint64, match string, count int) (uint6
 	return next, out, nil
 }
 
-// SScan iterates the members of the set at key, returning a page of matching
-// members plus the next cursor. A missing key yields cursor 0 and no elements;
-// a key of the wrong type returns ErrWrongType.
+// SScan returns one page of the set at key, keeping only members matching the
+// pattern, plus the next cursor. A missing key yields cursor 0 and no elements;
+// a wrong-type key returns ErrWrongType.
 func (s *Store) SScan(key string, cursor uint64, match string, count int) (uint64, []string, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
@@ -153,11 +134,10 @@ func (s *Store) SScan(key string, cursor uint64, match string, count int) (uint6
 	return next, out, nil
 }
 
-// ZScan iterates the members of the sorted set at key, returning a page of
-// matching members with their scores plus the next cursor. Iteration order is
-// by member name (not score), which is all cursor stability requires; callers
-// format the scores. A missing key yields cursor 0 and no elements; a key of the
-// wrong type returns ErrWrongType.
+// ZScan returns one page of the sorted set at key, keeping only members matching
+// the pattern, plus the next cursor. Members are ordered by name (enough for a
+// stable cursor) and the caller formats the scores. A missing key yields cursor
+// 0 and no elements; a wrong-type key returns ErrWrongType.
 func (s *Store) ZScan(key string, cursor uint64, match string, count int) (uint64, []ZMember, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
@@ -185,12 +165,10 @@ func (s *Store) ZScan(key string, cursor uint64, match string, count int) (uint6
 	return next, out, nil
 }
 
-// scanWindow walks a single sorted slice (the fields of a hash, members of a set
-// or sorted set) starting at cursor and returns up to count entries plus the
-// next cursor. The next cursor is 0 once the slice is exhausted, and an
-// out-of-range cursor (including one left dangling by deletions) also terminates
-// cleanly at 0 rather than panicking. MATCH filtering is left to the caller so a
-// page may still come back empty with a non-zero cursor.
+// scanWindow returns up to count entries of a sorted slice starting at cursor,
+// plus the next cursor (0 once exhausted). An out-of-range cursor terminates at
+// 0 instead of panicking. Filtering is left to the caller, so a page may come
+// back empty with a non-zero cursor.
 func scanWindow(sorted []string, cursor uint64, count int) (uint64, []string) {
 	if count <= 0 {
 		count = defaultScanCount
@@ -199,9 +177,8 @@ func scanWindow(sorted []string, cursor uint64, count int) (uint64, []string) {
 		return 0, nil
 	}
 	start := int(cursor)
-	// Compare against the remaining tail rather than computing start+count,
-	// which would overflow int (and then slice with a negative bound, panicking
-	// the whole server) when a client sends a huge COUNT.
+	// Compare against the remaining tail instead of computing start+count, which
+	// would overflow to a negative slice bound on a huge COUNT and panic.
 	if count >= len(sorted)-start {
 		return 0, sorted[start:]
 	}
