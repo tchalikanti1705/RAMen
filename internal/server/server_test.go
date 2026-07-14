@@ -1121,3 +1121,58 @@ func TestSScan(t *testing.T) {
 	mustError(t, cli, "SSCAN", "s")
 	mustError(t, cli, "SSCAN", "s", "notanumber")
 }
+
+func TestZScan(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// Missing key: cursor 0, no elements.
+	if cursor, elems := scanReply(t, mustDo(t, cli, "ZSCAN", "nope", "0")); cursor != "0" || len(elems) != 0 {
+		t.Fatalf("ZSCAN missing = (%q, %v)", cursor, elems)
+	}
+
+	const n = 400
+	want := make(map[string]string, n)
+	for i := 0; i < n; i++ {
+		m := "m:" + strconv.Itoa(i)
+		mustDo(t, cli, "ZADD", "z", strconv.Itoa(i), m)
+		want[m] = strconv.Itoa(i) // formatFloat of an integer-valued score
+	}
+
+	// A full scan returns every member/score pair exactly once, for any COUNT.
+	for _, count := range []int{0, 1, 13, 1000} {
+		got := flatToMap(t, scanCollect(t, cli, []string{"ZSCAN", "z"}, "", count))
+		if len(got) != n {
+			t.Fatalf("COUNT %d: got %d pairs, want %d", count, len(got), n)
+		}
+		for m, sc := range want {
+			if got[m] != sc {
+				t.Fatalf("COUNT %d: member %q score = %q, want %q", count, m, got[m], sc)
+			}
+		}
+	}
+
+	// MATCH filters on the member name: "m:1?" matches m:10..m:19.
+	got := flatToMap(t, scanCollect(t, cli, []string{"ZSCAN", "z"}, "m:1?", 0))
+	if len(got) != 10 {
+		t.Fatalf("ZSCAN MATCH m:1? returned %d pairs, want 10: %v", len(got), got)
+	}
+	for m, sc := range got {
+		if want[m] != sc {
+			t.Fatalf("ZSCAN MATCH returned unexpected pair %q=%q", m, sc)
+		}
+	}
+
+	// Scores are formatted like ZSCORE, including fractional values.
+	mustDo(t, cli, "ZADD", "z2", "3.5", "half")
+	_, elems := scanReply(t, mustDo(t, cli, "ZSCAN", "z2", "0"))
+	if len(elems) != 2 || elems[0] != "half" || elems[1] != "3.5" {
+		t.Fatalf("ZSCAN score formatting = %v", elems)
+	}
+
+	// Wrong type and arity are rejected.
+	mustDo(t, cli, "SET", "str", "x")
+	mustError(t, cli, "ZSCAN", "str", "0")
+	mustError(t, cli, "ZSCAN", "z")
+	mustError(t, cli, "ZSCAN", "z", "notanumber")
+}
