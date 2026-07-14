@@ -87,3 +87,20 @@ func (c *conn) cmdScan(args []string) error {
 	next, keys := c.s.store.Scan(opts.cursor, opts.match, opts.count)
 	return c.writeScanReply(next, keys)
 }
+
+// cmdHScan implements HSCAN key cursor [MATCH pattern] [COUNT count]. The
+// elements are a flat [field, value, ...] list.
+func (c *conn) cmdHScan(args []string) error {
+	if len(args) < 3 {
+		return c.wrongArgs("hscan")
+	}
+	opts, err := parseScanTail(args, 2)
+	if err != nil {
+		return c.writeError(err.Error())
+	}
+	next, pairs, err := c.s.store.HScan(args[1], opts.cursor, opts.match, opts.count)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	return c.writeScanReply(next, pairs)
+}

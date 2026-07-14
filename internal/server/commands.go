@@ -78,6 +78,7 @@ func (s *Server) registerCommands() {
 		"HLEN":         (*conn).cmdHLen,
 		"HEXISTS":      (*conn).cmdHExists,
 		"HMGET":        (*conn).cmdHMGet,
+		"HSCAN":        (*conn).cmdHScan,
 
 		// lists
 		"LPUSH":   (*conn).cmdLPush,
