@@ -36,6 +36,30 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 | `KEYS <pattern>` | Glob-match keys (`*`, `?`, `[...]`). |
 | `TYPE <key>` | `string`/`hash`/`list`/`set`/`zset`/`vector`/`none`. |
 
+## Cursor iteration
+
+Incremental, non-blocking alternatives to `KEYS`/`HGETALL`/`SMEMBERS` that return
+a page at a time. Every reply is a two-element array: the next cursor as a
+string, then the page of elements. Start with cursor `0` and keep calling until
+the returned cursor is `0` again.
+
+| Command | Description |
+|---|---|
+| `SCAN <cursor> [MATCH pattern] [COUNT n]` | Iterate the keyspace one page at a time. |
+
+`MATCH` filters with the same glob syntax as `KEYS`. `COUNT` is a hint for how
+much work to do per call (default `10`), not the number of elements returned —
+`MATCH` is applied *after* `COUNT` keys are fetched, so a page can come back
+empty while the cursor is still non-zero. Always loop until the cursor is `0`;
+stopping at the first empty page will miss keys.
+
+The cursor packs a shard index and an offset into that shard's sorted keys, so
+it stays a plain integer with no per-connection state. This is a weaker
+guarantee than a point-in-time snapshot: keys added or removed while you iterate
+shift the offsets, so a key that exists for the whole scan can be missed or
+returned more than once. Redis makes a similarly weak promise. Keys present from
+start to finish and never touched are returned exactly once.
+
 ## Strings
 
 | Command | Description |

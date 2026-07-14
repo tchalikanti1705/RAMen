@@ -847,3 +847,159 @@ func TestMSetNX(t *testing.T) {
 	mustError(t, cli, "MSETNX", "k", "v", "k2") // dangling key
 	mustError(t, cli, "MSETNX")                 // nothing
 }
+
+// scanReply asserts a single SCAN-family reply is a two-element array and
+// returns the next cursor plus the elements.
+func scanReply(t *testing.T, r any) (string, []string) {
+	t.Helper()
+	arr, ok := r.([]any)
+	if !ok || len(arr) != 2 {
+		t.Fatalf("scan reply is not a two-element array: %v", r)
+	}
+	cursor, ok := arr[0].(string)
+	if !ok {
+		t.Fatalf("scan cursor is not a bulk string: %v", arr[0])
+	}
+	rawElems, ok := arr[1].([]any)
+	if !ok {
+		t.Fatalf("scan elements is not an array: %v", arr[1])
+	}
+	elems := make([]string, len(rawElems))
+	for i, e := range rawElems {
+		s, ok := e.(string)
+		if !ok {
+			t.Fatalf("scan element %d is not a string: %v", i, e)
+		}
+		elems[i] = s
+	}
+	return cursor, elems
+}
+
+// scanCollect drives a SCAN-family command to completion and returns every
+// element gathered across the pages. prefix is the command plus any key that
+// comes before the cursor (e.g. {"SCAN"} or {"HSCAN", "h"}); match and count
+// are optional (empty/zero to omit). It fails if the cursor never returns to 0.
+func scanCollect(t *testing.T, cli *client.Client, prefix []string, match string, count int) []string {
+	t.Helper()
+	cursor := "0"
+	var out []string
+	for iter := 0; ; iter++ {
+		if iter > 200000 {
+			t.Fatalf("%v scan did not terminate (cursor stuck at %s)", prefix, cursor)
+		}
+		args := append([]string{}, prefix...)
+		args = append(args, cursor)
+		if match != "" {
+			args = append(args, "MATCH", match)
+		}
+		if count > 0 {
+			args = append(args, "COUNT", strconv.Itoa(count))
+		}
+		next, elems := scanReply(t, mustDo(t, cli, args...))
+		out = append(out, elems...)
+		if next == "0" {
+			return out
+		}
+		cursor = next
+	}
+}
+
+func TestScan(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// An empty keyspace terminates immediately at cursor 0 with no elements.
+	if cursor, elems := scanReply(t, mustDo(t, cli, "SCAN", "0")); cursor != "0" || len(elems) != 0 {
+		t.Fatalf("SCAN on empty db = (%q, %v)", cursor, elems)
+	}
+
+	// Insert enough keys to span many shards and force multiple pages.
+	const n = 1000
+	want := make(map[string]bool, n)
+	for i := 0; i < n; i++ {
+		k := "key:" + strconv.Itoa(i)
+		mustDo(t, cli, "SET", k, "v")
+		want[k] = true
+	}
+
+	// A full scan visits every key exactly once, regardless of COUNT.
+	for _, count := range []int{0, 1, 7, 100} {
+		got := scanCollect(t, cli, []string{"SCAN"}, "", count)
+		seen := make(map[string]bool, len(got))
+		for _, k := range got {
+			if seen[k] {
+				t.Fatalf("COUNT %d: key %q returned twice", count, k)
+			}
+			seen[k] = true
+		}
+		if len(seen) != n {
+			t.Fatalf("COUNT %d: scanned %d distinct keys, want %d", count, len(seen), n)
+		}
+		for k := range want {
+			if !seen[k] {
+				t.Fatalf("COUNT %d: key %q was missed", count, k)
+			}
+		}
+	}
+
+	// MATCH filters the results; only keys ending in a single digit 0-9 under
+	// the "key:" prefix that also match "key:1?" (10-19) should come back.
+	got := scanCollect(t, cli, []string{"SCAN"}, "key:1?", 0)
+	if len(got) != 10 {
+		t.Fatalf("SCAN MATCH key:1? returned %d keys, want 10: %v", len(got), got)
+	}
+	for _, k := range got {
+		if !want[k] {
+			t.Fatalf("SCAN MATCH returned an unexpected key %q", k)
+		}
+	}
+
+	// The bug the maintainer flagged: MATCH is applied after COUNT keys are
+	// fetched, so a page can legitimately be empty with a non-zero cursor. A
+	// client that stops at the first empty page would truncate; it must loop
+	// until the cursor is 0. Assert both: at least one empty non-terminal page
+	// exists, and the full loop still finds nothing (the pattern matches no key).
+	sawEmptyNonTerminal := false
+	cursor := "0"
+	for {
+		next, elems := scanReply(t, mustDo(t, cli, "SCAN", cursor, "MATCH", "nomatch:*", "COUNT", "10"))
+		if next != "0" && len(elems) == 0 {
+			sawEmptyNonTerminal = true
+		}
+		if len(elems) != 0 {
+			t.Fatalf("SCAN MATCH nomatch:* returned elements: %v", elems)
+		}
+		if next == "0" {
+			break
+		}
+		cursor = next
+	}
+	if !sawEmptyNonTerminal {
+		t.Fatal("expected at least one empty page with a non-zero cursor")
+	}
+
+	// Error handling: a bad cursor, a non-integer or non-positive COUNT, a
+	// dangling MATCH/COUNT, and an unknown option are all rejected.
+	mustError(t, cli, "SCAN", "notanumber")
+	mustError(t, cli, "SCAN", "0", "COUNT", "abc")
+	mustError(t, cli, "SCAN", "0", "COUNT", "0")
+	mustError(t, cli, "SCAN", "0", "COUNT", "-1")
+	mustError(t, cli, "SCAN", "0", "MATCH")
+	mustError(t, cli, "SCAN", "0", "COUNT")
+	mustError(t, cli, "SCAN", "0", "BOGUS", "x")
+	mustError(t, cli, "SCAN")
+
+	// A wildly out-of-range cursor must not panic; it yields a valid reply and
+	// the iteration still terminates cleanly at 0.
+	cursor = "999999999999999999"
+	for iter := 0; ; iter++ {
+		if iter > 1000 {
+			t.Fatal("huge-cursor scan did not terminate")
+		}
+		next, _ := scanReply(t, mustDo(t, cli, "SCAN", cursor))
+		if next == "0" {
+			break
+		}
+		cursor = next
+	}
+}
