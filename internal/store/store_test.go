@@ -4,6 +4,8 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -520,5 +522,189 @@ func TestListInsert(t *testing.T) {
 	s.Set("str", "v", SetOptions{})
 	if _, err := s.LInsert("str", true, "a", "x"); err != ErrWrongType {
 		t.Fatalf("LInsert wrong type = %v", err)
+	}
+}
+
+func TestGetDel(t *testing.T) {
+	s := New()
+
+	// missing key: not found, nothing deleted
+	if _, ok, err := s.GetDel("nope"); ok || err != nil {
+		t.Fatalf("GetDel missing = ok=%v err=%v", ok, err)
+	}
+
+	// get-and-delete
+	s.Set("k", "v", SetOptions{})
+	if v, ok, err := s.GetDel("k"); err != nil || !ok || v != "v" {
+		t.Fatalf("GetDel = %q ok=%v err=%v", v, ok, err)
+	}
+	if s.Exists("k") != 0 {
+		t.Fatal("GetDel did not delete the key")
+	}
+
+	// a WRONGTYPE key errors and is left in place
+	s.push("lst", true, []string{"x"})
+	if _, _, err := s.GetDel("lst"); err != ErrWrongType {
+		t.Fatalf("GetDel wrong type = %v, want ErrWrongType", err)
+	}
+	if s.Exists("lst") != 1 {
+		t.Fatal("GetDel deleted a WRONGTYPE key")
+	}
+}
+
+func TestGetEx(t *testing.T) {
+	s := New()
+	cur := time.Unix(1000, 0)
+	s.now = func() time.Time { return cur }
+
+	if _, ok, err := s.GetEx("nope", GetExOp{}); ok || err != nil {
+		t.Fatalf("GetEx missing = ok=%v err=%v", ok, err)
+	}
+
+	// no change leaves an existing TTL untouched
+	s.Set("k", "v", SetOptions{})
+	s.Expire("k", 100*time.Second) // deadline at 1100
+	if v, ok, err := s.GetEx("k", GetExOp{Mode: GetExNoChange}); err != nil || !ok || v != "v" {
+		t.Fatalf("GetEx no-change = %q ok=%v err=%v", v, ok, err)
+	}
+	if at, hasTTL, _ := s.ExpireTime("k"); !hasTTL || at.Unix() != 1100 {
+		t.Fatalf("GetEx no-change altered the TTL: at=%d hasTTL=%v", at.Unix(), hasTTL)
+	}
+
+	// relative TTL
+	if _, ok, _ := s.GetEx("k", GetExOp{Mode: GetExSetTTL, TTL: 50 * time.Second}); !ok {
+		t.Fatal("GetEx set-ttl not ok")
+	}
+	if at, _, _ := s.ExpireTime("k"); at.Unix() != 1050 {
+		t.Fatalf("GetEx set-ttl deadline = %d, want 1050", at.Unix())
+	}
+
+	// persist removes the TTL
+	if _, ok, _ := s.GetEx("k", GetExOp{Mode: GetExPersist}); !ok {
+		t.Fatal("GetEx persist not ok")
+	}
+	if _, hasTTL, _ := s.ExpireTime("k"); hasTTL {
+		t.Fatal("GetEx persist left a TTL")
+	}
+
+	// absolute deadline in the future
+	if _, ok, _ := s.GetEx("k", GetExOp{Mode: GetExSetAt, At: time.Unix(2000, 0)}); !ok {
+		t.Fatal("GetEx set-at not ok")
+	}
+	if at, _, _ := s.ExpireTime("k"); at.Unix() != 2000 {
+		t.Fatalf("GetEx set-at deadline = %d, want 2000", at.Unix())
+	}
+
+	// absolute deadline in the past: returns the value but deletes the key
+	if v, ok, err := s.GetEx("k", GetExOp{Mode: GetExSetAt, At: time.Unix(500, 0)}); err != nil || !ok || v != "v" {
+		t.Fatalf("GetEx past-at = %q ok=%v err=%v", v, ok, err)
+	}
+	if s.Exists("k") != 0 {
+		t.Fatal("GetEx with a past deadline did not delete the key")
+	}
+
+	// a WRONGTYPE key errors and its TTL is left untouched
+	s.push("lst", true, []string{"x"})
+	s.Expire("lst", 100*time.Second)
+	if _, _, err := s.GetEx("lst", GetExOp{Mode: GetExPersist}); err != ErrWrongType {
+		t.Fatalf("GetEx wrong type = %v, want ErrWrongType", err)
+	}
+	if _, hasTTL, _ := s.ExpireTime("lst"); !hasTTL {
+		t.Fatal("GetEx on a WRONGTYPE key cleared its TTL")
+	}
+}
+
+func TestMSetNX(t *testing.T) {
+	s := New()
+	cur := time.Unix(1000, 0)
+	s.now = func() time.Time { return cur }
+
+	// all keys new: writes everything, returns true
+	if !s.MSetNX([]string{"a", "b", "c"}, []string{"1", "2", "3"}) {
+		t.Fatal("MSetNX to a clean keyspace should be true")
+	}
+	for k, want := range map[string]string{"a": "1", "b": "2", "c": "3"} {
+		if v, _, _ := s.Get(k); v != want {
+			t.Fatalf("MSetNX %s = %q, want %q", k, v, want)
+		}
+	}
+
+	// any key already present: writes nothing, returns false
+	if s.MSetNX([]string{"d", "a", "e"}, []string{"4", "9", "5"}) {
+		t.Fatal("MSetNX with an existing key should be false")
+	}
+	if s.Exists("d") != 0 || s.Exists("e") != 0 {
+		t.Fatal("MSetNX must not write any key when one already exists")
+	}
+	if v, _, _ := s.Get("a"); v != "1" {
+		t.Fatalf("MSetNX must not overwrite the existing key, a = %q", v)
+	}
+
+	// a WRONGTYPE key still counts as existing and blocks the whole op
+	s.push("lst", true, []string{"x"})
+	if s.MSetNX([]string{"f", "lst"}, []string{"6", "7"}) {
+		t.Fatal("MSetNX with an existing non-string key should be false")
+	}
+	if s.Exists("f") != 0 {
+		t.Fatal("MSetNX wrote a key alongside an existing non-string key")
+	}
+
+	// an expired key does not count as existing
+	s.Set("g", "old", SetOptions{})
+	s.Expire("g", time.Second)
+	cur = cur.Add(2 * time.Second)
+	if !s.MSetNX([]string{"g"}, []string{"new"}) {
+		t.Fatal("MSetNX over an expired key should be true")
+	}
+	if v, _, _ := s.Get("g"); v != "new" {
+		t.Fatalf("MSetNX over an expired key = %q, want new", v)
+	}
+
+	// duplicate keys in one call: the last value wins
+	if !s.MSetNX([]string{"h", "h"}, []string{"first", "second"}) {
+		t.Fatal("MSetNX with duplicate new keys should be true")
+	}
+	if v, _, _ := s.Get("h"); v != "second" {
+		t.Fatalf("MSetNX duplicate key = %q, want second (last wins)", v)
+	}
+}
+
+func TestMSetNXConcurrent(t *testing.T) {
+	s := New()
+	// Two keys on different shards, so every MSetNX locks two shards. Goroutines
+	// race to claim the pair in opposite key orders: a wrong lock order would
+	// deadlock this test, and -race flags any unsafe shard-map access. Exactly
+	// one goroutine wins (all-or-nothing) and both keys carry that winner's mark.
+	kx, ky := "mx", "my"
+	for i := 0; s.shardFor(kx) == s.shardFor(ky); i++ {
+		ky = "my" + strconv.Itoa(i)
+	}
+
+	const g = 32
+	var winners int64
+	var wg sync.WaitGroup
+	for i := 0; i < g; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			mark := strconv.Itoa(id)
+			keys := []string{kx, ky}
+			if id%2 == 1 {
+				keys = []string{ky, kx} // reversed order to stress lock ordering
+			}
+			if s.MSetNX(keys, []string{mark, mark}) {
+				atomic.AddInt64(&winners, 1)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	if winners != 1 {
+		t.Fatalf("MSetNX winners = %d, want exactly 1 (all-or-nothing under races)", winners)
+	}
+	vx, _, _ := s.Get(kx)
+	vy, _, _ := s.Get(ky)
+	if vx == "" || vx != vy {
+		t.Fatalf("MSetNX torn write: %s=%q %s=%q, want one winner's mark on both", kx, vx, ky, vy)
 	}
 }

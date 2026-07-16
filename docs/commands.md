@@ -45,6 +45,8 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 | `SETEX <key> <seconds> <value>` | Set with a TTL in seconds; rejects a non-positive TTL. |
 | `PSETEX <key> <ms> <value>` | Set with a TTL in milliseconds; rejects a non-positive TTL. |
 | `GET <key>` | Get a string. |
+| `GETDEL <key>` | Get the value and delete the key atomically; nil if missing. |
+| `GETEX <key> [EX s \| PX ms \| EXAT ts \| PXAT ts \| PERSIST]` | Get the value and optionally set or clear its TTL; no option leaves the TTL as-is. |
 | `GETSET <key> <value>` | Set and return the old value. |
 | `APPEND <key> <value>` | Append; returns new length. |
 | `STRLEN <key>` | Length of the string in bytes; `0` if missing. |
@@ -55,6 +57,7 @@ conventions; arguments in `<>` are required, `[]` optional. RAMen is single
 | `INCRBYFLOAT <key> <n>` | Add float `n` to a float string; returns the new value. |
 | `MGET <key> [key ...]` | Multiple gets. |
 | `MSET <key> <val> [key val ...]` | Multiple sets. |
+| `MSETNX <key> <val> [key val ...]` | Set all pairs only if none of the keys exist; `1` if set, `0` otherwise. |
 
 ## Hashes
 

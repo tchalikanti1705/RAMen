@@ -84,6 +84,45 @@ func (s *Store) Set(key, val string, opts SetOptions) bool {
 	return true
 }
 
+// MSetNX sets every key to its paired value, but only if NONE of the keys
+// already exist. It is all-or-nothing (nothing is written when any key is
+// present) and reports whether the write happened. keys and vals must be the
+// same length.
+func (s *Store) MSetNX(keys, vals []string) bool {
+	// Lock every shard that hosts one of the keys, once each, in array-index
+	// order so concurrent multi-key writers acquire the shards in the same order
+	// and cannot deadlock.
+	shs := make([]*shard, len(keys))
+	involved := make(map[*shard]bool, len(keys))
+	for i, k := range keys {
+		shs[i] = s.shardFor(k)
+		involved[shs[i]] = true
+	}
+	for _, sh := range s.shards {
+		if involved[sh] {
+			sh.mu.Lock()
+		}
+	}
+	defer func() {
+		for _, sh := range s.shards {
+			if involved[sh] {
+				sh.mu.Unlock()
+			}
+		}
+	}()
+
+	now := s.now()
+	for i, k := range keys {
+		if _, exists := shs[i].peekLive(k, now); exists {
+			return false
+		}
+	}
+	for i, k := range keys {
+		shs[i].m[k] = &entry{val: vals[i]}
+	}
+	return true
+}
+
 // GetSet sets key to val and returns the previous string value.
 func (s *Store) GetSet(key, val string) (old string, hadOld bool, err error) {
 	sh := s.shardFor(key)
@@ -98,6 +137,72 @@ func (s *Store) GetSet(key, val string) (old string, hadOld bool, err error) {
 	}
 	sh.m[key] = &entry{val: val}
 	return old, hadOld, nil
+}
+
+// GetDel returns the string at key and deletes it, atomically. ok is false when
+// the key is missing (nothing is deleted); a WRONGTYPE key is left in place.
+func (s *Store) GetDel(key string) (val string, ok bool, err error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return "", false, nil
+	}
+	str, err := asString(e)
+	if err != nil {
+		return "", false, err
+	}
+	delete(sh.m, key)
+	return str, true, nil
+}
+
+// GetExMode selects the TTL change GETEX applies after reading a key.
+type GetExMode int
+
+const (
+	GetExNoChange GetExMode = iota // leave the TTL untouched (plain GET)
+	GetExSetTTL                    // set a relative TTL: expireAt = now + TTL
+	GetExSetAt                     // set an absolute deadline (delete if already past)
+	GetExPersist                   // remove any TTL
+)
+
+// GetExOp describes GETEX's optional TTL change.
+type GetExOp struct {
+	Mode GetExMode
+	TTL  time.Duration // used when Mode == GetExSetTTL
+	At   time.Time     // used when Mode == GetExSetAt
+}
+
+// GetEx returns the string at key and optionally adjusts its TTL per op: no
+// change (like GET), a relative TTL, an absolute deadline (a past one deletes
+// the key while still returning the value, matching Redis), or PERSIST. ok is
+// false when the key is missing.
+func (s *Store) GetEx(key string, op GetExOp) (val string, ok bool, err error) {
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return "", false, nil
+	}
+	str, err := asString(e)
+	if err != nil {
+		return "", false, err
+	}
+	switch op.Mode {
+	case GetExSetTTL:
+		e.expireAt = s.now().Add(op.TTL)
+	case GetExSetAt:
+		if !op.At.After(s.now()) {
+			delete(sh.m, key)
+			return str, true, nil
+		}
+		e.expireAt = op.At
+	case GetExPersist:
+		e.expireAt = time.Time{}
+	}
+	return str, true, nil
 }
 
 // Append concatenates val to the string at key (creating it if absent) and

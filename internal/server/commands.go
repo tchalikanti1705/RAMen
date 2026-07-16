@@ -44,6 +44,8 @@ func (s *Server) registerCommands() {
 
 		// strings
 		"GET":         (*conn).cmdGet,
+		"GETDEL":      (*conn).cmdGetDel,
+		"GETEX":       (*conn).cmdGetEx,
 		"SET":         (*conn).cmdSet,
 		"SETNX":       (*conn).cmdSetNX,
 		"SETEX":       (*conn).cmdSetEx,
@@ -60,6 +62,7 @@ func (s *Server) registerCommands() {
 		"INCRBYFLOAT": (*conn).cmdIncrByFloat,
 		"MGET":        (*conn).cmdMGet,
 		"MSET":        (*conn).cmdMSet,
+		"MSETNX":      (*conn).cmdMSetNX,
 
 		// hashes
 		"HSET":         (*conn).cmdHSet,

@@ -110,6 +110,85 @@ func (c *conn) cmdGetSet(args []string) error {
 	return c.writeBulk(old)
 }
 
+func (c *conn) cmdGetDel(args []string) error {
+	if len(args) != 2 {
+		return c.wrongArgs("getdel")
+	}
+	v, ok, err := c.s.store.GetDel(args[1])
+	if err != nil {
+		return c.storeErr(err)
+	}
+	if !ok {
+		return c.writeNull()
+	}
+	return c.writeBulk(v)
+}
+
+// cmdGetEx implements GETEX key [EX s | PX ms | EXAT ts | PXAT ts | PERSIST].
+// With no option it behaves like GET, leaving the TTL untouched.
+func (c *conn) cmdGetEx(args []string) error {
+	if len(args) < 2 {
+		return c.wrongArgs("getex")
+	}
+	op := store.GetExOp{Mode: store.GetExNoChange}
+	if len(args) > 2 {
+		switch opt := strings.ToUpper(args[2]); opt {
+		case "PERSIST":
+			if len(args) != 3 {
+				return c.writeError("ERR syntax error")
+			}
+			op.Mode = store.GetExPersist
+		case "EX", "PX", "EXAT", "PXAT":
+			if len(args) != 4 {
+				return c.writeError("ERR syntax error")
+			}
+			n, err := strconv.ParseInt(args[3], 10, 64)
+			if err != nil {
+				return c.writeError(store.ErrNotInteger.Error())
+			}
+			switch opt {
+			case "EX", "PX":
+				unit := time.Second
+				if opt == "PX" {
+					unit = time.Millisecond
+				}
+				// reject a non-positive TTL, and one so large it would overflow
+				// time.Duration and wrap into the past
+				if n <= 0 || n > math.MaxInt64/int64(unit) {
+					return c.writeError("ERR invalid expire time in 'getex' command")
+				}
+				op.Mode = store.GetExSetTTL
+				op.TTL = time.Duration(n) * unit
+			case "EXAT":
+				// Redis rejects a non-positive absolute expire up front and
+				// leaves the key untouched; a positive-but-past one (e.g. EXAT 1)
+				// still deletes it.
+				if n <= 0 || n > maxExpireSeconds {
+					return c.writeError("ERR invalid expire time in 'getex' command")
+				}
+				op.Mode = store.GetExSetAt
+				op.At = time.Unix(n, 0)
+			case "PXAT":
+				if n <= 0 {
+					return c.writeError("ERR invalid expire time in 'getex' command")
+				}
+				op.Mode = store.GetExSetAt
+				op.At = time.UnixMilli(n)
+			}
+		default:
+			return c.writeError("ERR syntax error")
+		}
+	}
+	v, ok, err := c.s.store.GetEx(args[1], op)
+	if err != nil {
+		return c.storeErr(err)
+	}
+	if !ok {
+		return c.writeNull()
+	}
+	return c.writeBulk(v)
+}
+
 func (c *conn) cmdAppend(args []string) error {
 	if len(args) != 3 {
 		return c.wrongArgs("append")
@@ -197,6 +276,22 @@ func (c *conn) cmdMSet(args []string) error {
 		c.s.store.Set(args[i], args[i+1], store.SetOptions{})
 	}
 	return c.writeSimple("OK")
+}
+
+// cmdMSetNX sets all key/value pairs only if none of the keys already exist,
+// returning 1 on write and 0 (writing nothing) if any key is already present.
+func (c *conn) cmdMSetNX(args []string) error {
+	if len(args) < 3 || len(args)%2 != 1 {
+		return c.wrongArgs("msetnx")
+	}
+	n := (len(args) - 1) / 2
+	keys := make([]string, n)
+	vals := make([]string, n)
+	for i := 0; i < n; i++ {
+		keys[i] = args[1+2*i]
+		vals[i] = args[2+2*i]
+	}
+	return c.writeInt(boolToInt(c.s.store.MSetNX(keys, vals)))
 }
 
 func (c *conn) cmdStrLen(args []string) error {

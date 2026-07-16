@@ -678,3 +678,172 @@ func TestSetEx(t *testing.T) {
 	mustError(t, cli, "SETEX", "k", "10")
 	mustError(t, cli, "PSETEX", "k", "10")
 }
+
+func TestGetDel(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// missing key returns nil
+	if r, err := cli.Do("GETDEL", "nope"); err != nil || r != nil {
+		t.Fatalf("GETDEL missing = %v (err %v), want nil", r, err)
+	}
+
+	mustDo(t, cli, "SET", "k", "v")
+	if r := mustDo(t, cli, "GETDEL", "k"); r != "v" {
+		t.Fatalf("GETDEL = %v", r)
+	}
+	if r := mustDo(t, cli, "EXISTS", "k"); r != int64(0) {
+		t.Fatalf("GETDEL did not delete the key = %v", r)
+	}
+
+	// WRONGTYPE key errors and stays
+	mustDo(t, cli, "RPUSH", "lst", "x")
+	mustError(t, cli, "GETDEL", "lst")
+	if r := mustDo(t, cli, "EXISTS", "lst"); r != int64(1) {
+		t.Fatalf("GETDEL deleted a WRONGTYPE key = %v", r)
+	}
+
+	mustError(t, cli, "GETDEL")           // arity
+	mustError(t, cli, "GETDEL", "a", "b") // arity
+}
+
+func TestGetEx(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// missing key returns nil
+	if r, err := cli.Do("GETEX", "nope"); err != nil || r != nil {
+		t.Fatalf("GETEX missing = %v (err %v), want nil", r, err)
+	}
+
+	mustDo(t, cli, "SET", "k", "v")
+
+	// no option behaves like GET and leaves the TTL untouched
+	if r := mustDo(t, cli, "GETEX", "k"); r != "v" {
+		t.Fatalf("GETEX = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "k"); r != int64(-1) {
+		t.Fatalf("GETEX with no option set a TTL = %v", r)
+	}
+
+	// no option must PRESERVE an existing TTL, not clear it like PERSIST does
+	mustDo(t, cli, "SET", "kt", "v")
+	mustDo(t, cli, "EXPIRE", "kt", "100")
+	if r := mustDo(t, cli, "GETEX", "kt"); r != "v" {
+		t.Fatalf("GETEX kt = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "kt").(int64); r <= 0 || r > 100 {
+		t.Fatalf("GETEX with no option changed an existing TTL = %v, want (0,100]", r)
+	}
+
+	// EX sets a TTL
+	if r := mustDo(t, cli, "GETEX", "k", "EX", "100"); r != "v" {
+		t.Fatalf("GETEX EX = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "k").(int64); r <= 0 || r > 100 {
+		t.Fatalf("GETEX EX TTL = %v, want (0,100]", r)
+	}
+
+	// PERSIST removes it
+	mustDo(t, cli, "GETEX", "k", "PERSIST")
+	if r := mustDo(t, cli, "TTL", "k"); r != int64(-1) {
+		t.Fatalf("GETEX PERSIST left a TTL = %v", r)
+	}
+
+	// EXAT with a past timestamp returns the value and deletes the key
+	if r := mustDo(t, cli, "GETEX", "k", "EXAT", "1"); r != "v" {
+		t.Fatalf("GETEX EXAT past = %v", r)
+	}
+	if r := mustDo(t, cli, "EXISTS", "k"); r != int64(0) {
+		t.Fatalf("GETEX EXAT past did not delete the key = %v", r)
+	}
+
+	// error paths must not touch the key
+	mustDo(t, cli, "SET", "k2", "v")
+	mustError(t, cli, "GETEX", "k2", "EX", "0")                     // non-positive TTL
+	mustError(t, cli, "GETEX", "k2", "EX", "notanint")              // bad TTL
+	mustError(t, cli, "GETEX", "k2", "EX", "10000000000")           // TTL overflows time.Duration
+	mustError(t, cli, "GETEX", "k2", "PX", "9999999999999")         // ms TTL overflows time.Duration
+	mustError(t, cli, "GETEX", "k2", "EXAT", "9223372036854775807") // absolute ts overflow
+	// a non-positive absolute expire must error and leave the key untouched;
+	// unlike EXPIREAT, GETEX rejects EXAT/PXAT <= 0 rather than deleting the key
+	if e := mustError(t, cli, "GETEX", "k2", "EXAT", "0"); e.Error() != "ERR invalid expire time in 'getex' command" {
+		t.Fatalf("GETEX EXAT 0 error = %q", e.Error())
+	}
+	mustError(t, cli, "GETEX", "k2", "EXAT", "-5")
+	mustError(t, cli, "GETEX", "k2", "PXAT", "0")
+	mustError(t, cli, "GETEX", "k2", "BOGUS")            // unknown option
+	mustError(t, cli, "GETEX", "k2", "EX")               // missing TTL value
+	mustError(t, cli, "GETEX", "k2", "PERSIST", "extra") // trailing junk
+	mustError(t, cli, "GETEX")                           // arity
+	if r := mustDo(t, cli, "EXISTS", "k2"); r != int64(1) {
+		t.Fatalf("a failed GETEX changed k2 = %v", r)
+	}
+
+	// millisecond and future-absolute paths set a TTL rather than delete
+	mustDo(t, cli, "SET", "mp", "v")
+	if r := mustDo(t, cli, "GETEX", "mp", "PX", "100000"); r != "v" {
+		t.Fatalf("GETEX PX = %v", r)
+	}
+	if r := mustDo(t, cli, "PTTL", "mp").(int64); r <= 0 || r > 100000 {
+		t.Fatalf("GETEX PX PTTL = %v, want (0,100000]", r)
+	}
+	futureMs := strconv.FormatInt(time.Now().UnixMilli()+1_000_000, 10)
+	if r := mustDo(t, cli, "GETEX", "mp", "PXAT", futureMs); r != "v" {
+		t.Fatalf("GETEX PXAT future = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "mp").(int64); r <= 0 {
+		t.Fatalf("GETEX PXAT future did not set a TTL = %v", r)
+	}
+	futureSec := strconv.FormatInt(time.Now().Unix()+1000, 10)
+	mustDo(t, cli, "SET", "ea", "v")
+	if r := mustDo(t, cli, "GETEX", "ea", "EXAT", futureSec); r != "v" {
+		t.Fatalf("GETEX EXAT future = %v", r)
+	}
+	if r := mustDo(t, cli, "TTL", "ea").(int64); r <= 0 {
+		t.Fatalf("GETEX EXAT future did not set a TTL = %v", r)
+	}
+
+	// at most one option
+	mustError(t, cli, "GETEX", "mp", "EX", "10", "PERSIST")
+
+	// WRONGTYPE
+	mustDo(t, cli, "RPUSH", "lst", "x")
+	mustError(t, cli, "GETEX", "lst")
+}
+
+func TestMSetNX(t *testing.T) {
+	cli, cleanup := startTestServer(t)
+	defer cleanup()
+
+	// all keys new -> 1, everything set
+	if r := mustDo(t, cli, "MSETNX", "a", "1", "b", "2", "c", "3"); r != int64(1) {
+		t.Fatalf("MSETNX all-new = %v, want 1", r)
+	}
+	if r := mustDo(t, cli, "GET", "b"); r != "2" {
+		t.Fatalf("MSETNX did not set b = %v", r)
+	}
+
+	// any key already present -> 0, nothing written
+	if r := mustDo(t, cli, "MSETNX", "d", "4", "a", "9", "e", "5"); r != int64(0) {
+		t.Fatalf("MSETNX with an existing key = %v, want 0", r)
+	}
+	if r := mustDo(t, cli, "EXISTS", "d", "e"); r != int64(0) {
+		t.Fatalf("MSETNX wrote keys despite an existing one = %v", r)
+	}
+	if r := mustDo(t, cli, "GET", "a"); r != "1" {
+		t.Fatalf("MSETNX overwrote the existing key = %v", r)
+	}
+
+	// duplicate keys in one call: last value wins
+	if r := mustDo(t, cli, "MSETNX", "dup", "1", "dup", "2"); r != int64(1) {
+		t.Fatalf("MSETNX duplicate keys = %v, want 1", r)
+	}
+	if r := mustDo(t, cli, "GET", "dup"); r != "2" {
+		t.Fatalf("MSETNX duplicate last-wins = %v", r)
+	}
+
+	mustError(t, cli, "MSETNX", "k")            // no value for the key
+	mustError(t, cli, "MSETNX", "k", "v", "k2") // dangling key
+	mustError(t, cli, "MSETNX")                 // nothing
+}
