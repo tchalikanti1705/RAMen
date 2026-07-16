@@ -180,6 +180,10 @@ Step by step guide: [docs/mcp.md](docs/mcp.md).
 
 Open http://localhost:8080 in your browser while RAMen is running. You will see your keys, memory use, and the cache hit rate, updating live. Turn it off with `--dashboard-addr ""`.
 
+### Prometheus metrics
+
+RAMen exposes its counters in Prometheus text format at `http://localhost:8080/metrics`, ready to scrape into Prometheus/Grafana with no extra setup (and no third-party dependency — it is hand-written). Everything is prefixed `ramen_`: `ramen_commands_processed_total`, `ramen_connections_total`, `ramen_cache_hits_total` / `ramen_cache_misses_total` / `ramen_cache_hit_ratio`, `ramen_keys`, `ramen_memory_alloc_bytes`, `ramen_connected_clients`, and `ramen_uptime_seconds`. The endpoint rides on the dashboard, so it is only served when the dashboard is enabled — with `--dashboard-addr ""` there is no `/metrics` to scrape. It reports counts only (no keys or values) and, like the rest of the dashboard, is unauthenticated.
+
 ## RAMen vs Redis vs Valkey
 
 | | RAMen | Redis | Valkey |
