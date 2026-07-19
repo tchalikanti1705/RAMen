@@ -117,5 +117,7 @@ func (c *conn) cmdSCacheGet(args []string) error {
 		return c.writeNull()
 	}
 	c.s.stats.CacheHits.Add(1)
+	// A hit refreshes the entry's LRU position so hot entries outlive the cap.
+	c.s.store.VTouch(scacheCollection, results[0].Item.ID)
 	return c.writeBulk(meta.Response)
 }

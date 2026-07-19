@@ -22,6 +22,10 @@ type Item struct {
 	Meta       string
 	ExpireUnix int64   // Unix seconds the item expires at; 0 == no expiry
 	norm       float64 // Euclidean norm of Vec, cached at insert time; not persisted
+	// lastAccessUnix is when the item was last inserted or hit, for LRU
+	// eviction. Not persisted: items loaded from a snapshot start at 0 and
+	// rank oldest until they are used again.
+	lastAccessUnix int64
 }
 
 // expired reports whether the item's deadline has passed at nowUnix. A zero
@@ -55,6 +59,13 @@ func (c *Collection) Set(id string, vec []float32, meta string, expireUnix int64
 	copy(cp, vec)
 	c.items[id] = &Item{ID: id, Vec: cp, Meta: meta, ExpireUnix: expireUnix, norm: norm(cp)}
 	return nil
+}
+
+// Touch records that the item was just used, so LRU eviction keeps it longer.
+func (c *Collection) Touch(id string, nowUnix int64) {
+	if it, ok := c.items[id]; ok {
+		it.lastAccessUnix = nowUnix
+	}
 }
 
 // SweepExpired removes every item whose deadline is past at nowUnix and
