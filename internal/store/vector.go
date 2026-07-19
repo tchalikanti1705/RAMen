@@ -43,6 +43,31 @@ func (s *Store) VTouch(key, id string) {
 	}
 }
 
+// VEnforceCap bounds the collection at key to max items. Expired items are
+// swept first, since reclaiming a dead entry is always better than evicting a
+// live one; only then does approximated LRU evict live items. max <= 0 means
+// unbounded and does nothing.
+func (s *Store) VEnforceCap(key string, max int) {
+	if max <= 0 {
+		return
+	}
+	sh := s.shardFor(key)
+	sh.mu.Lock()
+	defer sh.mu.Unlock()
+	e, found := sh.getLive(key, s.now())
+	if !found {
+		return
+	}
+	c, ok := e.val.(*vector.Collection)
+	if !ok {
+		return
+	}
+	if c.Len() > max {
+		c.SweepExpired(s.now().Unix())
+	}
+	c.EvictLRU(max)
+}
+
 // VSearch returns the top-k nearest vectors in the collection at key.
 func (s *Store) VSearch(key string, query []float32, k int) ([]vector.Result, error) {
 	sh := s.shardFor(key)

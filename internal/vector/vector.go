@@ -91,6 +91,37 @@ func norm(v []float32) float64 {
 	return math.Sqrt(sum)
 }
 
+// evictSample is how many candidates an eviction round examines. Like Redis's
+// approximated LRU, evicting the oldest of a small random sample gets close to
+// true LRU without keeping the items in an ordered structure.
+const evictSample = 5
+
+// EvictLRU removes items until the collection holds at most max, picking each
+// victim as the least-recently-used of a sample (map iteration order supplies
+// the randomness). It returns how many were evicted. max <= 0 evicts nothing.
+func (c *Collection) EvictLRU(max int) int {
+	if max <= 0 {
+		return 0
+	}
+	evicted := 0
+	for len(c.items) > max {
+		var victim *Item
+		seen := 0
+		for _, it := range c.items {
+			if victim == nil || it.lastAccessUnix < victim.lastAccessUnix {
+				victim = it
+			}
+			seen++
+			if seen >= evictSample {
+				break
+			}
+		}
+		delete(c.items, victim.ID)
+		evicted++
+	}
+	return evicted
+}
+
 // Del removes id; it reports whether the id existed.
 func (c *Collection) Del(id string) bool {
 	if _, ok := c.items[id]; ok {
