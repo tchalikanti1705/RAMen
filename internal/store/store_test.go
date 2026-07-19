@@ -751,6 +751,9 @@ func TestVectorExpirySnapshot(t *testing.T) {
 	s.VSet("v", "live", []float32{0, 1}, "m", 2000)
 	s.VSet("v", "forever", []float32{1, 1}, "m", 0)
 
+	// A collection whose items are all dead at save time writes no record.
+	s.VSet("allgone", "x", []float32{1, 0}, "m", 1005)
+
 	// Items already expired at save time are not written out.
 	cur = time.Unix(1020, 0)
 	var vrec *Record
@@ -758,6 +761,9 @@ func TestVectorExpirySnapshot(t *testing.T) {
 	for i := range recs {
 		if recs[i].Key == "v" {
 			vrec = &recs[i]
+		}
+		if recs[i].Key == "allgone" {
+			t.Fatalf("an all-expired collection was exported: %+v", recs[i])
 		}
 	}
 	if vrec == nil || len(vrec.Vectors) != 2 {

@@ -905,8 +905,19 @@ func TestSCacheExpiry(t *testing.T) {
 	})
 	defer cleanup()
 
-	// An entry whose TTL has already passed is invisible to SCACHE.GET.
-	mustDo(t, cli, "SCACHE.SET", "p1", "resp", "TTL", "-1")
+	// A TTL that is non-positive, overflows time.Duration, or is not an
+	// integer is rejected up front, like SETEX.
+	mustError(t, cli, "SCACHE.SET", "p1", "r", "TTL", "0")
+	mustError(t, cli, "SCACHE.SET", "p1", "r", "TTL", "-1")
+	mustError(t, cli, "SCACHE.SET", "p1", "r", "TTL", "9223372036854775807")
+	mustError(t, cli, "SCACHE.SET", "p1", "r", "TTL", "ten")
+	if n, _ := st.VCard("__scache__"); n != 0 {
+		t.Fatalf("rejected TTL still wrote an entry: VCARD = %d", n)
+	}
+
+	// An entry whose item deadline has already passed is invisible to
+	// SCACHE.GET even though it is still in the collection awaiting sweep.
+	st.VSet("__scache__", "p1", []float32{1, 0}, `{"r":"resp"}`, 1)
 	if r, err := cli.Do("SCACHE.GET", "p1"); err != nil || r != nil {
 		t.Fatalf("SCACHE.GET expired = %v %v, want nil", r, err)
 	}

@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -41,6 +42,12 @@ func (c *conn) cmdSCacheSet(args []string) error {
 		secs, err := strconv.ParseInt(args[4], 10, 64)
 		if err != nil {
 			return c.writeError("ERR TTL must be an integer number of seconds")
+		}
+		// Reject a non-positive TTL, and one so large that secs*Second would
+		// overflow time.Duration and wrap into a past deadline the sweeper
+		// would treat as already expired. Same guard as SETEX.
+		if secs <= 0 || secs > math.MaxInt64/int64(time.Second) {
+			return c.writeError("ERR invalid expire time in 'scache.set' command")
 		}
 		expireUnix = time.Now().Add(time.Duration(secs) * time.Second).Unix()
 	} else if len(args) != 3 {
