@@ -10,11 +10,11 @@ import (
 
 func TestSetSearch(t *testing.T) {
 	c := NewCollection()
-	if err := c.Set("a", []float32{1, 0, 0}, "alpha"); err != nil {
+	if err := c.Set("a", []float32{1, 0, 0}, "alpha", 0); err != nil {
 		t.Fatal(err)
 	}
-	c.Set("b", []float32{0, 1, 0}, "beta")
-	c.Set("c", []float32{0.9, 0.1, 0}, "gamma")
+	c.Set("b", []float32{0, 1, 0}, "beta", 0)
+	c.Set("c", []float32{0.9, 0.1, 0}, "gamma", 0)
 
 	res, err := c.Search([]float32{1, 0, 0}, 2)
 	if err != nil {
@@ -33,8 +33,8 @@ func TestSetSearch(t *testing.T) {
 
 func TestDimMismatch(t *testing.T) {
 	c := NewCollection()
-	c.Set("a", []float32{1, 2, 3}, "")
-	if err := c.Set("b", []float32{1, 2}, ""); err != ErrDimMismatch {
+	c.Set("a", []float32{1, 2, 3}, "", 0)
+	if err := c.Set("b", []float32{1, 2}, "", 0); err != ErrDimMismatch {
 		t.Fatalf("want ErrDimMismatch, got %v", err)
 	}
 }
@@ -104,9 +104,9 @@ func TestSearchEdgeCases(t *testing.T) {
 	}
 
 	c := NewCollection()
-	c.Set("a", []float32{1, 0}, "")
-	c.Set("b", []float32{0, 1}, "")
-	c.Set("d", []float32{1, 1}, "")
+	c.Set("a", []float32{1, 0}, "", 0)
+	c.Set("b", []float32{0, 1}, "", 0)
+	c.Set("d", []float32{1, 1}, "", 0)
 
 	// k larger than the collection returns everything, still sorted.
 	if res, _ := c.Search([]float32{1, 0}, 99); len(res) != 3 {
@@ -143,7 +143,7 @@ func TestSearchEdgeCases(t *testing.T) {
 
 	// Replacing an id must refresh its cached norm: after shrinking a's vector,
 	// its cosine to the query is recomputed correctly (identical direction -> ~1).
-	c.Set("a", []float32{5, 0}, "") // same direction, different magnitude
+	c.Set("a", []float32{5, 0}, "", 0) // same direction, different magnitude
 	if r, _ := c.Search([]float32{1, 0}, 1); r[0].Item.ID != "a" || r[0].Score < 0.99 {
 		t.Fatalf("replace did not refresh norm: %v", r)
 	}
@@ -159,7 +159,7 @@ func randVectors(n, dim int) (*Collection, []float32) {
 		for j := range v {
 			v[j] = rng.Float32()
 		}
-		c.Set(strconv.Itoa(i), v, "")
+		c.Set(strconv.Itoa(i), v, "", 0)
 	}
 	query := make([]float32, dim)
 	for j := range query {

@@ -52,7 +52,7 @@ func (c *conn) cmdSCacheSet(args []string) error {
 		return c.writeError("ERR " + err.Error())
 	}
 	meta, _ := json.Marshal(scacheMeta{Response: response, ExpireUnix: expireUnix})
-	if err := c.s.store.VSet(scacheCollection, prompt, vec, string(meta)); err != nil {
+	if err := c.s.store.VSet(scacheCollection, prompt, vec, string(meta), 0); err != nil {
 		return c.storeErr(err)
 	}
 	return c.writeSimple("OK")

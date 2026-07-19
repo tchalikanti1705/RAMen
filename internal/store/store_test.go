@@ -320,7 +320,7 @@ func TestSnapshotRoundtrip(t *testing.T) {
 	s.RPush("l", "a", "b")
 	s.SAdd("set", "x", "y")
 	s.ZAdd("z", []ZMember{{Member: "m", Score: 1.5}})
-	s.VSet("vec", "id1", []float32{1, 2, 3}, "meta")
+	s.VSet("vec", "id1", []float32{1, 2, 3}, "meta", 0)
 
 	recs := s.Export()
 	s2 := New()

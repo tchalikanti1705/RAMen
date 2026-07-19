@@ -122,7 +122,7 @@ func recordValue(rec Record) value {
 	case "vector":
 		c := vector.NewCollection()
 		for _, vr := range rec.Vectors {
-			c.Set(vr.ID, vr.Vec, vr.Meta)
+			c.Set(vr.ID, vr.Vec, vr.Meta, 0)
 		}
 		return c
 	default:
