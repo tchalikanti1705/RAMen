@@ -65,6 +65,9 @@ func (c *conn) cmdSCacheSet(args []string) error {
 	if err := c.s.store.VSet(scacheCollection, prompt, vec, string(meta), expireUnix); err != nil {
 		return c.storeErr(err)
 	}
+	// Keep the cache bounded: sustained distinct prompts evict the
+	// least-recently-used entries instead of growing without limit.
+	c.s.store.VEnforceCap(scacheCollection, c.s.cfg.SCacheMax)
 	return c.writeSimple("OK")
 }
 
