@@ -24,7 +24,7 @@ func (s *Store) VSet(key, id string, vec []float32, meta string, expireUnix int6
 		return err
 	}
 	// Inserting counts as an access, so a brand-new item is never the LRU pick.
-	c.Touch(id, s.now().Unix())
+	c.Touch(id, s.now().UnixNano())
 	return nil
 }
 
@@ -39,7 +39,7 @@ func (s *Store) VTouch(key, id string) {
 		return
 	}
 	if c, ok := e.val.(*vector.Collection); ok {
-		c.Touch(id, s.now().Unix())
+		c.Touch(id, s.now().UnixNano())
 	}
 }
 
