@@ -80,17 +80,27 @@ const defaultScanCount = 10
 func (s *Store) HScan(key string, cursor uint64, match string, count int) (uint64, []string, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
-	defer sh.mu.RUnlock()
 	e, found := sh.peekLive(key, s.now())
 	if !found {
+		sh.mu.RUnlock()
 		return 0, nil, nil
 	}
 	h, err := asHash(e)
 	if err != nil {
+		sh.mu.RUnlock()
 		return 0, nil, err
 	}
-	fields := make([]string, 0, len(h))
-	for f := range h {
+	// Copy the hash under the lock, sort after releasing it: sorting a large
+	// hash while holding the shard lock would block every writer to the shard
+	// for the whole sort, the same reason sortedLiveKeys releases before sorting.
+	cp := make(map[string]string, len(h))
+	for f, v := range h {
+		cp[f] = v
+	}
+	sh.mu.RUnlock()
+
+	fields := make([]string, 0, len(cp))
+	for f := range cp {
 		fields = append(fields, f)
 	}
 	sort.Strings(fields)
@@ -98,7 +108,7 @@ func (s *Store) HScan(key string, cursor uint64, match string, count int) (uint6
 	out := make([]string, 0, len(window)*2)
 	for _, f := range window {
 		if match == "" || matchPattern(match, f) {
-			out = append(out, f, h[f])
+			out = append(out, f, cp[f])
 		}
 	}
 	return next, out, nil
@@ -110,19 +120,22 @@ func (s *Store) HScan(key string, cursor uint64, match string, count int) (uint6
 func (s *Store) SScan(key string, cursor uint64, match string, count int) (uint64, []string, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
-	defer sh.mu.RUnlock()
 	e, found := sh.peekLive(key, s.now())
 	if !found {
+		sh.mu.RUnlock()
 		return 0, nil, nil
 	}
 	set, err := asSet(e)
 	if err != nil {
+		sh.mu.RUnlock()
 		return 0, nil, err
 	}
 	members := make([]string, 0, len(set))
 	for m := range set {
 		members = append(members, m)
 	}
+	sh.mu.RUnlock()
+	// Sorted outside the lock so a large set does not stall the shard's writers.
 	sort.Strings(members)
 	next, window := scanWindow(members, cursor, count)
 	out := make([]string, 0, len(window))
@@ -141,17 +154,26 @@ func (s *Store) SScan(key string, cursor uint64, match string, count int) (uint6
 func (s *Store) ZScan(key string, cursor uint64, match string, count int) (uint64, []ZMember, error) {
 	sh := s.shardFor(key)
 	sh.mu.RLock()
-	defer sh.mu.RUnlock()
 	e, found := sh.peekLive(key, s.now())
 	if !found {
+		sh.mu.RUnlock()
 		return 0, nil, nil
 	}
 	z, err := asZSet(e)
 	if err != nil {
+		sh.mu.RUnlock()
 		return 0, nil, err
 	}
-	members := make([]string, 0, len(z.scores))
-	for m := range z.scores {
+	// Copy the scores under the lock, sort after releasing it, so a large zset
+	// does not stall the shard's writers for the duration of the sort.
+	scores := make(map[string]float64, len(z.scores))
+	for m, sc := range z.scores {
+		scores[m] = sc
+	}
+	sh.mu.RUnlock()
+
+	members := make([]string, 0, len(scores))
+	for m := range scores {
 		members = append(members, m)
 	}
 	sort.Strings(members)
@@ -159,7 +181,7 @@ func (s *Store) ZScan(key string, cursor uint64, match string, count int) (uint6
 	out := make([]ZMember, 0, len(window))
 	for _, m := range window {
 		if match == "" || matchPattern(match, m) {
-			out = append(out, ZMember{Member: m, Score: z.scores[m]})
+			out = append(out, ZMember{Member: m, Score: scores[m]})
 		}
 	}
 	return next, out, nil
