@@ -57,11 +57,14 @@ empty while the cursor is still non-zero. Always loop until the cursor is `0`;
 stopping at the first empty page will miss keys.
 
 The cursor packs a shard index and an offset into that shard's sorted keys, so
-it stays a plain integer with no per-connection state. This is a weaker
-guarantee than a point-in-time snapshot: keys added or removed while you iterate
-shift the offsets, so a key that exists for the whole scan can be missed or
-returned more than once. Redis makes a similarly weak promise. Keys present from
-start to finish and never touched are returned exactly once.
+it stays a plain integer with no per-connection state. This does NOT implement
+Redis's SCAN guarantee. Redis promises that every element present from the
+start to the end of the iteration is returned; here, keys added or removed
+while you iterate shift the offsets, so concurrent writes can cause a key that
+exists for the whole scan to be skipped or returned more than once, with no
+error. In particular a scan-and-delete loop over a live keyspace can leave
+keys behind. Only iteration over a keyspace that is not being written to
+concurrently is guaranteed to visit every key exactly once.
 
 ## Strings
 
