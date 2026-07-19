@@ -183,3 +183,48 @@ func BenchmarkVSearch(b *testing.B) {
 		})
 	}
 }
+
+func TestSearchSkipsExpired(t *testing.T) {
+	c := NewCollection()
+	c.Set("live", []float32{1, 0}, "", 0)
+	c.Set("dying", []float32{9, 1}, "", 100)
+	q := []float32{9, 1}
+
+	// At the deadline the item still matches (expiry is strictly after it).
+	if res, _ := c.Search(q, 1, 100); len(res) != 1 || res[0].Item.ID != "dying" {
+		t.Fatalf("Search at the deadline = %v, want dying", res)
+	}
+	// Past the deadline it is invisible and the live item wins the slot.
+	if res, _ := c.Search(q, 1, 101); len(res) != 1 || res[0].Item.ID != "live" {
+		t.Fatalf("Search past the deadline = %v, want live", res)
+	}
+	// A zero nowUnix disables the check entirely.
+	if res, _ := c.Search(q, 1, 0); len(res) != 1 || res[0].Item.ID != "dying" {
+		t.Fatalf("Search with expiry disabled = %v, want dying", res)
+	}
+	// Replacing an item refreshes its deadline.
+	c.Set("dying", []float32{9, 1}, "", 0)
+	if res, _ := c.Search(q, 1, 101); len(res) != 1 || res[0].Item.ID != "dying" {
+		t.Fatalf("Search after refresh = %v, want dying", res)
+	}
+}
+
+func TestSweepExpired(t *testing.T) {
+	c := NewCollection()
+	c.Set("a", []float32{1, 0}, "", 0)
+	c.Set("b", []float32{0, 1}, "", 100)
+	c.Set("d", []float32{1, 1}, "", 50)
+
+	if n := c.SweepExpired(50); n != 0 {
+		t.Fatalf("SweepExpired at the deadline removed %d, want 0", n)
+	}
+	if n := c.SweepExpired(51); n != 1 || c.Len() != 2 {
+		t.Fatalf("SweepExpired(51) = %d removed, len %d; want 1 and 2", n, c.Len())
+	}
+	if n := c.SweepExpired(1000); n != 1 || c.Len() != 1 {
+		t.Fatalf("SweepExpired(1000) = %d removed, len %d; want 1 and 1", n, c.Len())
+	}
+	if _, ok := c.items["a"]; !ok {
+		t.Fatal("SweepExpired removed the item with no expiry")
+	}
+}
