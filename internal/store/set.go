@@ -129,16 +129,12 @@ func (s *Store) SCard(key string) (int, error) {
 }
 
 // readSets returns a private copy of each key's set, or ErrWrongType if any key
-// holds a non-set. Copying under each shard's read lock lets the multi-key
-// algebra run afterwards without holding any lock, matching the per-key read
-// style used elsewhere (e.g. MGET).
-//
-// With stopOnMissing set (SINTER), it stops at the first missing key and
-// returns complete=false without inspecting later keys, mirroring Redis, where
-// a missing key short-circuits the intersection to empty before any subsequent
-// key's type is checked. Otherwise (SUNION/SDIFF) a missing key yields an empty
-// set, every present key is type-checked, and complete is always true.
-func (s *Store) readSets(keys []string, stopOnMissing bool) (sets []map[string]struct{}, complete bool, err error) {
+// holds a non-set. A missing key yields a nil (empty) set, but every key is
+// still type-checked — Redis inspects all keys before deciding the result, so
+// a wrong-typed key errors even when an earlier key is missing. Copying under
+// each shard's read lock lets the multi-key algebra run afterwards without
+// holding any lock, matching the per-key read style used elsewhere (e.g. MGET).
+func (s *Store) readSets(keys []string) ([]map[string]struct{}, error) {
 	now := s.now()
 	out := make([]map[string]struct{}, len(keys))
 	for i, k := range keys {
@@ -147,17 +143,12 @@ func (s *Store) readSets(keys []string, stopOnMissing bool) (sets []map[string]s
 		e, found := sh.peekLive(k, now)
 		if !found {
 			sh.mu.RUnlock()
-			if stopOnMissing {
-				// A missing key makes SINTER empty right away; Redis returns
-				// without type-checking the keys after it, so we stop too.
-				return nil, false, nil
-			}
 			continue // leave out[i] nil, i.e. an empty set
 		}
 		set, err := asSet(e)
 		if err != nil {
 			sh.mu.RUnlock()
-			return nil, false, err
+			return nil, err
 		}
 		cp := make(map[string]struct{}, len(set))
 		for m := range set {
@@ -166,21 +157,19 @@ func (s *Store) readSets(keys []string, stopOnMissing bool) (sets []map[string]s
 		out[i] = cp
 		sh.mu.RUnlock()
 	}
-	return out, true, nil
+	return out, nil
 }
 
 // SInter returns the members present in every set at keys. A missing key is an
-// empty set, so the result is empty. Returns ErrWrongType if any key is not a set.
+// empty set, so the result is empty. Returns ErrWrongType if any key is not a
+// set, regardless of where it sits relative to a missing key.
 func (s *Store) SInter(keys []string) ([]string, error) {
-	sets, complete, err := s.readSets(keys, true)
+	sets, err := s.readSets(keys)
 	if err != nil {
 		return nil, err
 	}
-	if !complete {
-		return nil, nil // a missing key makes the intersection empty
-	}
-	// Any empty set makes the intersection empty; otherwise scan the smallest
-	// set and keep members found in all the others.
+	// Any empty (or missing) set makes the intersection empty; otherwise scan
+	// the smallest set and keep members found in all the others.
 	base := sets[0]
 	for _, st := range sets {
 		if len(st) == 0 {
@@ -209,7 +198,7 @@ func (s *Store) SInter(keys []string) ([]string, error) {
 // SUnion returns the distinct members across all sets at keys (missing keys are
 // empty). Returns ErrWrongType if any key is not a set.
 func (s *Store) SUnion(keys []string) ([]string, error) {
-	sets, _, err := s.readSets(keys, false)
+	sets, err := s.readSets(keys)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +218,7 @@ func (s *Store) SUnion(keys []string) ([]string, error) {
 // SDiff returns the members of the first set that appear in none of the rest
 // (missing keys are empty). Returns ErrWrongType if any key is not a set.
 func (s *Store) SDiff(keys []string) ([]string, error) {
-	sets, _, err := s.readSets(keys, false)
+	sets, err := s.readSets(keys)
 	if err != nil {
 		return nil, err
 	}

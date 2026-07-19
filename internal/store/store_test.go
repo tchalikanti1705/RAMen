@@ -779,13 +779,20 @@ func TestSetAlgebra(t *testing.T) {
 	if _, err := s.SDiff([]string{"str", "a"}); err != ErrWrongType {
 		t.Fatalf("SDiff wrong type = %v", err)
 	}
-	// SINTER stops at the first missing key: a wrong-type key AFTER it is never
-	// reached, so the result is empty (not WRONGTYPE), matching Redis.
-	r, err = s.SInter([]string{"a", "nope", "str"})
-	check("SInter missing-before-wrongtype", r, err)
-	// SUNION/SDIFF still type-check every present key regardless of a missing one.
+	// A missing key never shields a wrong-typed key after it: every key is
+	// type-checked before the result is decided, so the reply does not depend
+	// on argument order and all three commands agree, matching Redis.
+	if _, err := s.SInter([]string{"a", "nope", "str"}); err != ErrWrongType {
+		t.Fatalf("SInter missing-before-wrongtype = %v, want WRONGTYPE", err)
+	}
+	if _, err := s.SInter([]string{"a", "str", "nope"}); err != ErrWrongType {
+		t.Fatalf("SInter wrongtype-before-missing = %v, want WRONGTYPE", err)
+	}
 	if _, err := s.SUnion([]string{"a", "nope", "str"}); err != ErrWrongType {
 		t.Fatalf("SUnion missing-before-wrongtype = %v, want WRONGTYPE", err)
+	}
+	if _, err := s.SDiff([]string{"a", "nope", "str"}); err != ErrWrongType {
+		t.Fatalf("SDiff missing-before-wrongtype = %v, want WRONGTYPE", err)
 	}
 }
 

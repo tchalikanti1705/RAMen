@@ -909,6 +909,13 @@ func TestSetAlgebra(t *testing.T) {
 	mustError(t, cli, "SINTER")
 	mustError(t, cli, "SUNION")
 	mustError(t, cli, "SDIFF")
+
+	// a missing key does not shield a wrong-typed key after it: every key is
+	// type-checked, so the reply does not depend on argument order
+	mustError(t, cli, "SINTER", "a", "nope", "str")
+	mustError(t, cli, "SINTER", "a", "str", "nope")
+	mustError(t, cli, "SUNION", "a", "nope", "str")
+	mustError(t, cli, "SDIFF", "a", "nope", "str")
 }
 
 func TestSetPopRandom(t *testing.T) {
