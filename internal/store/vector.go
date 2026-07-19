@@ -36,7 +36,7 @@ func (s *Store) VSearch(key string, query []float32, k int) ([]vector.Result, er
 	if !ok {
 		return nil, ErrWrongType
 	}
-	return c.Search(query, k)
+	return c.Search(query, k, s.now().Unix())
 }
 
 // VDel removes a vector id from the collection at key.

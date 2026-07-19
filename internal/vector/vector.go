@@ -100,7 +100,10 @@ type Result struct {
 }
 
 // Search returns the top-k items by cosine similarity to query, highest first.
-func (c *Collection) Search(query []float32, k int) ([]Result, error) {
+// Items whose expiry is past at nowUnix are skipped, so an expired entry can
+// never win a slot over a live one; nowUnix 0 disables the check. Skipped items
+// stay in the collection — reclaiming them is the sweeper's job.
+func (c *Collection) Search(query []float32, k int, nowUnix int64) ([]Result, error) {
 	if c.Dim != 0 && len(query) != c.Dim {
 		return nil, ErrDimMismatch
 	}
@@ -118,6 +121,9 @@ func (c *Collection) Search(query []float32, k int) ([]Result, error) {
 	// allocation proportional to the whole collection.
 	h := make(topK, 0, k)
 	for _, it := range c.items {
+		if it.expired(nowUnix) {
+			continue
+		}
 		s := cosineNorm(query, qn, it)
 		if len(h) < k {
 			heap.Push(&h, Result{Item: it, Score: s})

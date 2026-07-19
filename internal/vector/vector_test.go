@@ -16,7 +16,7 @@ func TestSetSearch(t *testing.T) {
 	c.Set("b", []float32{0, 1, 0}, "beta", 0)
 	c.Set("c", []float32{0.9, 0.1, 0}, "gamma", 0)
 
-	res, err := c.Search([]float32{1, 0, 0}, 2)
+	res, err := c.Search([]float32{1, 0, 0}, 2, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestSearchMatchesBruteForce(t *testing.T) {
 	const n, dim, k = 500, 64, 10
 	c, query := randVectors(n, dim)
 
-	got, err := c.Search(query, k)
+	got, err := c.Search(query, k, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestSearchMatchesBruteForce(t *testing.T) {
 func TestSearchEdgeCases(t *testing.T) {
 	// Empty collection: no dimension, any query, empty (non-nil) result.
 	empty := NewCollection()
-	if res, err := empty.Search([]float32{1, 2, 3}, 5); err != nil || res == nil || len(res) != 0 {
+	if res, err := empty.Search([]float32{1, 2, 3}, 5, 0); err != nil || res == nil || len(res) != 0 {
 		t.Fatalf("empty collection Search = (%v, %v)", res, err)
 	}
 
@@ -109,42 +109,42 @@ func TestSearchEdgeCases(t *testing.T) {
 	c.Set("d", []float32{1, 1}, "", 0)
 
 	// k larger than the collection returns everything, still sorted.
-	if res, _ := c.Search([]float32{1, 0}, 99); len(res) != 3 {
+	if res, _ := c.Search([]float32{1, 0}, 99, 0); len(res) != 3 {
 		t.Fatalf("k>n returned %d results, want 3", len(res))
 	}
 	// k == n returns everything.
-	if res, _ := c.Search([]float32{1, 0}, 3); len(res) != 3 {
+	if res, _ := c.Search([]float32{1, 0}, 3, 0); len(res) != 3 {
 		t.Fatalf("k==n returned %d results, want 3", len(res))
 	}
 	// k <= 0 means "return everything".
 	for _, k := range []int{0, -1} {
-		if res, _ := c.Search([]float32{1, 0}, k); len(res) != 3 {
+		if res, _ := c.Search([]float32{1, 0}, k, 0); len(res) != 3 {
 			t.Fatalf("k=%d returned %d results, want 3", k, len(res))
 		}
 	}
 	// Descending order holds for a normal top-k.
-	res, _ := c.Search([]float32{1, 0}, 2)
+	res, _ := c.Search([]float32{1, 0}, 2, 0)
 	if len(res) != 2 || res[0].Score < res[1].Score {
 		t.Fatalf("top-2 not descending: %v", res)
 	}
 
 	// A zero-magnitude query scores every item 0 and must not panic or divide by
 	// zero; it still returns k items.
-	if z, _ := c.Search([]float32{0, 0}, 2); len(z) != 2 {
+	if z, _ := c.Search([]float32{0, 0}, 2, 0); len(z) != 2 {
 		t.Fatalf("zero-query returned %d results, want 2", len(z))
 	} else if z[0].Score != 0 {
 		t.Fatalf("zero-query score = %v, want 0", z[0].Score)
 	}
 
 	// Dimension mismatch is rejected.
-	if _, err := c.Search([]float32{1, 2, 3}, 1); err != ErrDimMismatch {
+	if _, err := c.Search([]float32{1, 2, 3}, 1, 0); err != ErrDimMismatch {
 		t.Fatalf("dim mismatch err = %v", err)
 	}
 
 	// Replacing an id must refresh its cached norm: after shrinking a's vector,
 	// its cosine to the query is recomputed correctly (identical direction -> ~1).
 	c.Set("a", []float32{5, 0}, "", 0) // same direction, different magnitude
-	if r, _ := c.Search([]float32{1, 0}, 1); r[0].Item.ID != "a" || r[0].Score < 0.99 {
+	if r, _ := c.Search([]float32{1, 0}, 1, 0); r[0].Item.ID != "a" || r[0].Score < 0.99 {
 		t.Fatalf("replace did not refresh norm: %v", r)
 	}
 }
@@ -176,7 +176,7 @@ func BenchmarkVSearch(b *testing.B) {
 		c, query := randVectors(n, dim)
 		b.Run(strconv.Itoa(n), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
-				if _, err := c.Search(query, 10); err != nil {
+				if _, err := c.Search(query, 10, 0); err != nil {
 					b.Fatal(err)
 				}
 			}
