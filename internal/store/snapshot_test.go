@@ -34,6 +34,10 @@ func TestExportConsistentUnderRename(t *testing.T) {
 
 	stop := make(chan struct{})
 	var pinger sync.WaitGroup
+	// Deferred so an early t.Fatalf still stops the pinger; otherwise it could
+	// keep calling t.Errorf after the test returns and mask the real failure.
+	defer pinger.Wait()
+	defer close(stop)
 
 	// Ping-pong the single key between the two shards until stopped.
 	pinger.Add(1)
@@ -66,9 +70,6 @@ func TestExportConsistentUnderRename(t *testing.T) {
 			t.Fatalf("snapshot saw the renamed key %d times, want exactly 1", n)
 		}
 	}
-
-	close(stop)
-	pinger.Wait()
 }
 
 // TestExportCopiesMutableValues guards against snapshot records aliasing live
