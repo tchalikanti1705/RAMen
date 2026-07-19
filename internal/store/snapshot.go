@@ -35,6 +35,12 @@ type VecRecord struct {
 // to another, so releasing each shard before reading the next could otherwise
 // record the key twice or miss it entirely. Locks are taken in shard-index
 // order, matching every other multi-shard operation, so this cannot deadlock.
+//
+// Values that writers mutate in place (hash maps, list slices) are copied while
+// the locks are held, so the returned records share no memory with live data
+// and can be serialised after Export returns without racing concurrent writes.
+// The other types are already detached: sets and zsets are built fresh here,
+// and vector items are replaced wholesale on write, never mutated in place.
 func (s *Store) Export() []Record {
 	now := s.now()
 	for _, sh := range s.shards {
@@ -59,9 +65,15 @@ func (s *Store) Export() []Record {
 			case string:
 				rec.Type, rec.Str = "string", v
 			case map[string]string:
-				rec.Type, rec.Hash = "hash", v
+				rec.Type = "hash"
+				h := make(map[string]string, len(v))
+				for f, fv := range v {
+					h[f] = fv
+				}
+				rec.Hash = h
 			case *list:
-				rec.Type, rec.List = "list", v.items
+				rec.Type = "list"
+				rec.List = append([]string(nil), v.items...)
 			case map[string]struct{}:
 				rec.Type = "set"
 				for m := range v {

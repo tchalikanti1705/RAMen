@@ -1,6 +1,8 @@
 package store
 
 import (
+	"encoding/gob"
+	"io"
 	"strconv"
 	"sync"
 	"testing"
@@ -67,4 +69,45 @@ func TestExportConsistentUnderRename(t *testing.T) {
 
 	close(stop)
 	pinger.Wait()
+}
+
+// TestExportCopiesMutableValues guards against snapshot records aliasing live
+// hash maps and list slices. Serialisation runs after Export has released
+// every lock, so an aliased map iterated by the encoder while a writer mutates
+// it kills the whole process with "concurrent map iteration and map write".
+// Encode snapshots while hammering the exported keys; run with -race to also
+// catch aliasing that does not crash outright.
+func TestExportCopiesMutableValues(t *testing.T) {
+	s := New()
+	s.HSet("h", map[string]string{"f0": "v"})
+	s.push("l", true, []string{"x"})
+
+	stop := make(chan struct{})
+	var writer sync.WaitGroup
+	defer writer.Wait()
+	defer close(stop)
+
+	writer.Add(1)
+	go func() {
+		defer writer.Done()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			s.HSet("h", map[string]string{"f" + strconv.Itoa(i%64): "v"})
+			if err := s.LSet("l", 0, strconv.Itoa(i)); err != nil {
+				t.Errorf("LSet: %v", err)
+				return
+			}
+		}
+	}()
+
+	enc := gob.NewEncoder(io.Discard)
+	for i := 0; i < 2000; i++ {
+		if err := enc.Encode(s.Export()); err != nil {
+			t.Fatalf("encode snapshot: %v", err)
+		}
+	}
 }
